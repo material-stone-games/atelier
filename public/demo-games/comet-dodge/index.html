@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comet Dodge</title>
+<style>
+  :root { --bg: #0b0e11; --line: rgba(232,231,223,.13); --cream: #e8e7df; --muted: #899197; --orange: #ff7144; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--cream); font-family: ui-monospace, "DM Mono", Consolas, monospace; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .wrap { height: 100%; display: grid; place-items: center; padding: 10px; }
+  .stage { position: relative; }
+  canvas { display: block; border: 1px solid var(--line); background: #0d1216; cursor: none; }
+  .overlay { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 8px; padding: 18px; background: rgba(11,14,17,.74); cursor: pointer; }
+  .overlay[hidden] { display: none; }
+  .overlay h1 { margin: 0; font-size: 26px; }
+  .overlay p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+  .overlay .accent { color: var(--orange); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stage">
+    <canvas id="board"></canvas>
+    <div class="overlay" id="overlay">
+      <h1 id="title">Comet Dodge</h1>
+      <p id="message">←/→ 또는 A/D, 마우스·터치로 좌우 이동<br>★ 별 +50 · 파란 방패는 충돌 1회 방어<br>오래 버틸수록 혜성이 빨라집니다</p>
+      <p class="accent">SPACE 또는 터치로 시작</p>
+    </div>
+  </div>
+</div>
+<script>
+  const W = 360, H = 560;
+  const canvas = document.getElementById("board");
+  const ctx = canvas.getContext("2d");
+  const overlay = document.getElementById("overlay");
+  const ui = { title: document.getElementById("title"), message: document.getElementById("message") };
+  const keys = new Set();
+  const stars = Array.from({ length: 70 }, () => ({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() * 0.7 }));
+
+  let scale = 1, ship, comets, pickups, particles, time, bonus, shield, pointerX = null, spawnTimer, pickupTimer, shieldTimer, state = "ready", last = 0, shake = 0;
+  let best = readBest();
+
+  function readBest() { try { return Number(localStorage.getItem("comet-dodge-best")) || 0; } catch { return 0; } }
+  function saveBest() { try { localStorage.setItem("comet-dodge-best", String(best)); } catch { /* storage unavailable */ } }
+  const score = () => Math.floor(time * 10) + bonus;
+
+  function fit() {
+    scale = Math.max(0.4, Math.min((innerWidth - 20) / W, (innerHeight - 20) / H));
+    const ratio = devicePixelRatio || 1;
+    canvas.style.width = `${W * scale}px`;
+    canvas.style.height = `${H * scale}px`;
+    canvas.width = W * scale * ratio;
+    canvas.height = H * scale * ratio;
+    ctx.setTransform(scale * ratio, 0, 0, scale * ratio, 0, 0);
+  }
+
+  function reset() {
+    ship = { x: W / 2, y: H - 56, r: 12, tilt: 0 };
+    comets = []; pickups = []; particles = [];
+    time = 0; bonus = 0; shield = false; spawnTimer = 0; pickupTimer = 2.5; shieldTimer = 14;
+  }
+
+  function spawnComet() {
+    const difficulty = Math.min(1, time / 90);
+    const r = 7 + Math.random() * (10 + difficulty * 8);
+    comets.push({ x: r + Math.random() * (W - r * 2), y: -r - 10, r, vx: (Math.random() - 0.5) * (30 + difficulty * 80), vy: 140 + Math.random() * 90 + time * 3.2, spin: Math.random() * Math.PI });
+  }
+
+  function burst(x, y, color, count) {
+    for (let i = 0; i < count; i += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 40 + Math.random() * 160;
+      particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 0.5 + Math.random() * 0.4, color });
+    }
+  }
+
+  function update(dt) {
+    time += dt;
+    const speed = 300;
+    let dx = 0;
+    if (keys.has("left")) dx -= 1;
+    if (keys.has("right")) dx += 1;
+    if (dx) { ship.x += dx * speed * dt; pointerX = null; }
+    else if (pointerX !== null) ship.x += Math.max(-speed * dt, Math.min(speed * dt, pointerX - ship.x));
+    ship.x = Math.max(ship.r + 4, Math.min(W - ship.r - 4, ship.x));
+    ship.tilt += ((dx || (pointerX !== null ? Math.sign(Math.round(pointerX - ship.x)) : 0)) * 0.35 - ship.tilt) * Math.min(1, dt * 10);
+
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) { spawnComet(); spawnTimer = Math.max(0.16, 0.7 - time * 0.009); }
+    pickupTimer -= dt;
+    if (pickupTimer <= 0) { pickups.push({ kind: "star", x: 20 + Math.random() * (W - 40), y: -12, vy: 120 }); pickupTimer = 2 + Math.random() * 1.5; }
+    shieldTimer -= dt;
+    if (shieldTimer <= 0) { pickups.push({ kind: "shield", x: 20 + Math.random() * (W - 40), y: -12, vy: 110 }); shieldTimer = 15 + Math.random() * 8; }
+
+    for (const comet of comets) { comet.x += comet.vx * dt; comet.y += comet.vy * dt; comet.spin += dt * 2; if (comet.x < comet.r || comet.x > W - comet.r) comet.vx *= -1; }
+    for (const item of pickups) item.y += item.vy * dt;
+    for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.96; p.vy *= 0.96; p.life -= dt; }
+    for (const s of stars) { s.y += (20 + time * 0.6) * s.z * dt * 3; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } }
+
+    for (const item of pickups) {
+      if (Math.hypot(item.x - ship.x, item.y - ship.y) > ship.r + 12) continue;
+      item.taken = true;
+      if (item.kind === "star") { bonus += 50; burst(item.x, item.y, "#ffd27a", 10); }
+      else { shield = true; burst(item.x, item.y, "#75a9ff", 14); }
+    }
+    for (const comet of comets) {
+      if (Math.hypot(comet.x - ship.x, comet.y - ship.y) > comet.r + ship.r - 3) continue;
+      comet.hit = true;
+      burst(comet.x, comet.y, "#ff7144", 18);
+      shake = 0.25;
+      if (shield) shield = false;
+      else return crash();
+    }
+    comets = comets.filter((comet) => !comet.hit && comet.y < H + 40);
+    pickups = pickups.filter((item) => !item.taken && item.y < H + 20);
+    particles = particles.filter((p) => p.life > 0);
+    shake = Math.max(0, shake - dt);
+  }
+
+  function crash() {
+    burst(ship.x, ship.y, "#e8e7df", 30);
+    state = "over";
+    const final = score();
+    if (final > best) { best = final; saveBest(); }
+    ui.title.textContent = "Crashed";
+    ui.message.innerHTML = `점수 ${final} · ${time.toFixed(1)}초 생존 · 최고 ${best}`;
+    setTimeout(() => { if (state === "over") overlay.hidden = false; }, 500);
+  }
+
+  function drawShip() {
+    ctx.save();
+    ctx.translate(ship.x, ship.y);
+    ctx.rotate(ship.tilt);
+    ctx.fillStyle = "rgba(255,113,68,.5)";
+    ctx.beginPath(); ctx.moveTo(-5, 12); ctx.lineTo(0, 20 + Math.random() * 8); ctx.lineTo(5, 12); ctx.fill();
+    ctx.fillStyle = "#e8e7df";
+    ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(12, 12); ctx.lineTo(0, 7); ctx.lineTo(-12, 12); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#ff7144";
+    ctx.beginPath(); ctx.arc(0, -2, 3, 0, Math.PI * 2); ctx.fill();
+    if (shield) { ctx.strokeStyle = "rgba(117,169,255,.8)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 21, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.save();
+    if (shake > 0) ctx.translate((Math.random() - 0.5) * 10 * shake, (Math.random() - 0.5) * 10 * shake);
+    ctx.fillStyle = "#0d1216";
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+    for (const s of stars) { ctx.fillStyle = `rgba(232,231,223,${s.z * 0.5})`; ctx.fillRect(s.x, s.y, s.z * 2, s.z * 2); }
+    for (const comet of comets) {
+      const tail = ctx.createLinearGradient(comet.x, comet.y, comet.x - comet.vx * 0.25, comet.y - comet.vy * 0.25);
+      tail.addColorStop(0, "rgba(255,113,68,.45)");
+      tail.addColorStop(1, "rgba(255,113,68,0)");
+      ctx.strokeStyle = tail; ctx.lineWidth = comet.r * 1.3; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(comet.x, comet.y); ctx.lineTo(comet.x - comet.vx * 0.25, comet.y - comet.vy * 0.25); ctx.stroke();
+      ctx.save(); ctx.translate(comet.x, comet.y); ctx.rotate(comet.spin);
+      ctx.fillStyle = "#5a5f63";
+      ctx.beginPath();
+      for (let i = 0; i < 7; i += 1) { const a = (i / 7) * Math.PI * 2; const rr = comet.r * (0.82 + ((i * 37) % 5) * 0.05); ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.beginPath(); ctx.arc(comet.r * 0.25, comet.r * 0.1, comet.r * 0.25, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    for (const item of pickups) {
+      if (item.kind === "star") {
+        ctx.fillStyle = "#ffd27a";
+        ctx.beginPath();
+        for (let i = 0; i < 10; i += 1) { const a = -Math.PI / 2 + (i * Math.PI) / 5; const rr = i % 2 ? 4 : 9; ctx.lineTo(item.x + Math.cos(a) * rr, item.y + Math.sin(a) * rr); }
+        ctx.closePath(); ctx.fill();
+      } else {
+        ctx.strokeStyle = "#75a9ff"; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(item.x, item.y, 9, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = "rgba(117,169,255,.3)"; ctx.fill();
+      }
+    }
+    for (const p of particles) { ctx.globalAlpha = Math.max(0, p.life * 1.6); ctx.fillStyle = p.color; ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3); }
+    ctx.globalAlpha = 1;
+    if (state !== "over" && ship) drawShip();
+    ctx.restore();
+    ctx.fillStyle = "#899197"; ctx.font = "11px ui-monospace, Consolas, monospace";
+    ctx.fillText(`SCORE ${ship ? score() : 0}`, 14, 22);
+    ctx.textAlign = "right"; ctx.fillText(`BEST ${best}`, W - 14, 22); ctx.textAlign = "left";
+    if (shield) { ctx.fillStyle = "#75a9ff"; ctx.fillText("SHIELD", 14, 40); }
+  }
+
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (state === "play") update(dt);
+    else if (state === "over") { for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; } particles = particles.filter((p) => p.life > 0); shake = Math.max(0, shake - dt); }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function start() { if (state === "play") return; reset(); state = "play"; overlay.hidden = true; }
+
+  const KEYMAP = { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right" };
+  addEventListener("keydown", (event) => {
+    if (KEYMAP[event.code]) { event.preventDefault(); keys.add(KEYMAP[event.code]); }
+    if ((event.code === "Space" || event.code === "Enter") && state !== "play") { event.preventDefault(); start(); }
+  });
+  addEventListener("keyup", (event) => { if (KEYMAP[event.code]) keys.delete(KEYMAP[event.code]); });
+  addEventListener("blur", () => keys.clear());
+  const toGame = (event) => (event.clientX - canvas.getBoundingClientRect().left) / scale;
+  canvas.addEventListener("pointermove", (event) => { if (state === "play") pointerX = toGame(event); });
+  canvas.addEventListener("pointerdown", (event) => { if (state === "play") pointerX = toGame(event); });
+  overlay.addEventListener("pointerdown", () => start());
+  addEventListener("resize", fit);
+  addEventListener("pointerdown", () => window.focus());
+
+  fit();
+  reset();
+  requestAnimationFrame((now) => { last = now; loop(now); });
+</script>
+</body>
+</html>

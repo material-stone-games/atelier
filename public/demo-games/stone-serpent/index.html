@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stone Serpent</title>
+<style>
+  :root { --bg: #101418; --panel: #171c21; --line: rgba(232,231,223,.13); --cream: #e8e7df; --muted: #899197; --orange: #ff7144; --green: #a6cd7c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--cream); font-family: ui-monospace, "DM Mono", Consolas, monospace; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 12px; }
+  .hud { display: flex; gap: 20px; font-size: 11px; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+  .hud b { color: var(--cream); font-weight: 600; }
+  .stage { position: relative; }
+  canvas { display: block; background: var(--panel); border: 1px solid var(--line); }
+  .overlay { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 8px; background: rgba(16,20,24,.72); cursor: pointer; }
+  .overlay[hidden] { display: none; }
+  .overlay h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
+  .overlay p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+  .overlay .accent { color: var(--orange); }
+  .pad { display: none; grid-template-columns: repeat(3, 52px); gap: 6px; }
+  .pad button { height: 44px; border: 1px solid var(--line); background: var(--panel); color: var(--cream); font-size: 16px; border-radius: 6px; }
+  .pad button:active { border-color: var(--orange); color: var(--orange); }
+  @media (pointer: coarse) { .pad { display: grid; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud"><span>Score <b id="score">0</b></span><span>Best <b id="best">0</b></span><span>Speed <b id="speed">1</b></span></div>
+  <div class="stage">
+    <canvas id="board"></canvas>
+    <div class="overlay" id="overlay">
+      <h1 id="title">Stone Serpent</h1>
+      <p id="message">방향키 / WASD 로 이동 · 벽은 반대편으로 이어집니다<br>불씨 5개마다 이끼 바위가 생겨요 · P 일시정지</p>
+      <p class="accent">SPACE 또는 터치로 시작</p>
+    </div>
+  </div>
+  <div class="pad">
+    <span></span><button data-dir="up">▲</button><span></span>
+    <button data-dir="left">◀</button><button data-dir="down">▼</button><button data-dir="right">▶</button>
+  </div>
+</div>
+<script>
+  const SIZE = 20;
+  const DIRS = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+  const KEYS = { ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down", ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right" };
+  const canvas = document.getElementById("board");
+  const ctx = canvas.getContext("2d");
+  const overlay = document.getElementById("overlay");
+  const ui = { score: document.getElementById("score"), best: document.getElementById("best"), speed: document.getElementById("speed"), title: document.getElementById("title"), message: document.getElementById("message") };
+
+  let cell = 20;
+  let snake, dir, queue, ember, rocks, score, stepMs, state = "ready", elapsed = 0, last = 0, pulse = 0;
+  let best = readBest();
+
+  function readBest() { try { return Number(localStorage.getItem("stone-serpent-best")) || 0; } catch { return 0; } }
+  function saveBest() { try { localStorage.setItem("stone-serpent-best", String(best)); } catch { /* storage unavailable */ } }
+
+  function fit() {
+    const padSpace = matchMedia("(pointer: coarse)").matches ? 110 : 0;
+    const room = Math.min(innerWidth - 24, innerHeight - 60 - padSpace);
+    cell = Math.max(10, Math.floor(room / SIZE));
+    const ratio = devicePixelRatio || 1;
+    canvas.style.width = canvas.style.height = `${cell * SIZE}px`;
+    canvas.width = canvas.height = cell * SIZE * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    draw();
+  }
+
+  function occupied(x, y) { return snake.some((part) => part.x === x && part.y === y) || rocks.some((rock) => rock.x === x && rock.y === y); }
+  function freeCell(avoidNear) {
+    for (let tries = 0; tries < 500; tries += 1) {
+      const x = Math.floor(Math.random() * SIZE);
+      const y = Math.floor(Math.random() * SIZE);
+      const head = snake[0];
+      if (occupied(x, y) || (ember && ember.x === x && ember.y === y)) continue;
+      if (avoidNear && Math.abs(head.x - x) + Math.abs(head.y - y) < 4) continue;
+      return { x, y };
+    }
+    return null;
+  }
+
+  function reset() {
+    snake = [{ x: 9, y: 10 }, { x: 8, y: 10 }, { x: 7, y: 10 }];
+    dir = DIRS.right; queue = []; rocks = []; ember = null; score = 0; stepMs = 150; elapsed = 0;
+    ember = freeCell(true);
+    updateHud();
+  }
+
+  function updateHud() {
+    ui.score.textContent = score;
+    ui.best.textContent = best;
+    ui.speed.textContent = Math.round((150 - stepMs) / 8) + 1;
+  }
+
+  function turn(name) {
+    const next = DIRS[name];
+    const lastDir = queue.length ? queue[queue.length - 1] : dir;
+    if (next.x === -lastDir.x && next.y === -lastDir.y) return;
+    if (next === lastDir || queue.length >= 2) return;
+    queue.push(next);
+  }
+
+  function step() {
+    dir = queue.shift() ?? dir;
+    const head = { x: (snake[0].x + dir.x + SIZE) % SIZE, y: (snake[0].y + dir.y + SIZE) % SIZE };
+    const eating = ember && head.x === ember.x && head.y === ember.y;
+    const body = eating ? snake : snake.slice(0, -1);
+    if (body.some((part) => part.x === head.x && part.y === head.y) || rocks.some((rock) => rock.x === head.x && rock.y === head.y)) return gameOver();
+    snake.unshift(head);
+    if (eating) {
+      score += 1;
+      stepMs = Math.max(65, stepMs - 4);
+      if (score % 5 === 0) { const rock = freeCell(true); if (rock) rocks.push(rock); }
+      ember = freeCell(false);
+      if (score > best) { best = score; saveBest(); }
+      updateHud();
+    } else {
+      snake.pop();
+    }
+  }
+
+  function gameOver() {
+    state = "over";
+    ui.title.textContent = "Game over";
+    ui.message.innerHTML = `불씨 ${score}개 · 최고 ${best}개`;
+    overlay.hidden = false;
+  }
+
+  function start() {
+    if (state === "play") return;
+    if (state !== "paused") reset();
+    state = "play";
+    overlay.hidden = true;
+    last = performance.now();
+  }
+
+  function togglePause() {
+    if (state === "play") {
+      state = "paused";
+      ui.title.textContent = "Paused";
+      ui.message.textContent = "P 또는 터치로 계속";
+      overlay.hidden = false;
+    } else if (state === "paused") start();
+  }
+
+  function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); }
+
+  function draw() {
+    if (!snake) reset();
+    const size = cell * SIZE;
+    ctx.fillStyle = "#171c21";
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "rgba(232,231,223,.06)";
+    for (let y = 0; y < SIZE; y += 1) for (let x = 0; x < SIZE; x += 1) ctx.fillRect(x * cell + cell / 2 - 1, y * cell + cell / 2 - 1, 2, 2);
+    for (const rock of rocks) {
+      ctx.fillStyle = "#3d4a42";
+      roundRect(rock.x * cell + 1, rock.y * cell + 1, cell - 2, cell - 2, cell * .25);
+      ctx.fillStyle = "rgba(166,205,124,.55)";
+      roundRect(rock.x * cell + 3, rock.y * cell + 3, cell * .45, cell * .3, cell * .15);
+    }
+    if (ember) {
+      const glow = 0.55 + Math.sin(pulse * 6) * 0.15;
+      ctx.fillStyle = `rgba(255,113,68,${glow * .35})`;
+      ctx.beginPath(); ctx.arc(ember.x * cell + cell / 2, ember.y * cell + cell / 2, cell * .62, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#ff7144";
+      ctx.beginPath(); ctx.arc(ember.x * cell + cell / 2, ember.y * cell + cell / 2, cell * .3, 0, Math.PI * 2); ctx.fill();
+    }
+    snake.forEach((part, index) => {
+      const fade = 1 - index / (snake.length + 6);
+      ctx.fillStyle = index === 0 ? "#ff7144" : `rgba(232,231,223,${0.35 + fade * 0.55})`;
+      const inset = index === 0 ? 1 : 2;
+      roundRect(part.x * cell + inset, part.y * cell + inset, cell - inset * 2, cell - inset * 2, cell * .3);
+    });
+    const head = snake[0];
+    ctx.fillStyle = "#101418";
+    const eyeX = head.x * cell + cell / 2 + dir.x * cell * .18;
+    const eyeY = head.y * cell + cell / 2 + dir.y * cell * .18;
+    ctx.beginPath(); ctx.arc(eyeX - dir.y * cell * .16, eyeY - dir.x * cell * .16, cell * .08, 0, Math.PI * 2); ctx.arc(eyeX + dir.y * cell * .16, eyeY + dir.x * cell * .16, cell * .08, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function loop(now) {
+    const delta = Math.min(100, now - last);
+    last = now;
+    pulse += delta / 1000;
+    if (state === "play") {
+      elapsed += delta;
+      while (elapsed >= stepMs && state === "play") { elapsed -= stepMs; step(); }
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  addEventListener("keydown", (event) => {
+    if (KEYS[event.code]) { event.preventDefault(); if (state === "play") turn(KEYS[event.code]); else if (state === "ready" || state === "over") { start(); turn(KEYS[event.code]); } }
+    else if (event.code === "Space" || event.code === "Enter") { event.preventDefault(); state === "paused" ? start() : state !== "play" && start(); }
+    else if (event.code === "KeyP" || event.code === "Escape") togglePause();
+  });
+  overlay.addEventListener("pointerdown", () => start());
+  document.querySelectorAll(".pad button").forEach((button) => button.addEventListener("pointerdown", (event) => { event.preventDefault(); if (state !== "play") start(); turn(button.dataset.dir); }));
+  let touchStart = null;
+  canvas.addEventListener("pointerdown", (event) => { touchStart = { x: event.clientX, y: event.clientY }; });
+  canvas.addEventListener("pointerup", (event) => {
+    if (!touchStart) return;
+    const dx = event.clientX - touchStart.x;
+    const dy = event.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 18) return;
+    turn(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
+  });
+  addEventListener("resize", fit);
+  addEventListener("pointerdown", () => window.focus());
+
+  reset();
+  fit();
+  requestAnimationFrame((now) => { last = now; loop(now); });
+</script>
+</body>
+</html>

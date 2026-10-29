@@ -1,0 +1,61 @@
+import type { AccessLevel, AuthState, Game } from "../types";
+
+// Keep in sync with functions/src/access.ts so the hub and the server agree on the rotation.
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+// 1970-01-01 was a Thursday; shifting by 3 days makes weeks start on Monday (KST).
+const MONDAY_SHIFT_MS = 3 * 24 * 60 * 60 * 1000;
+const ROTATION_MIN = 3;
+const ROTATION_MAX = 5;
+
+export function isAccessLevel(value: unknown): value is AccessLevel {
+  return value === "public" || value === "login" || value === "subscriber" || value === "member";
+}
+
+export function weekIndex(date = new Date()): number {
+  return Math.floor((date.getTime() + KST_OFFSET_MS + MONDAY_SHIFT_MS) / WEEK_MS);
+}
+
+function seededRandom(seed: number): () => number {
+  let state = seed | 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) | 0;
+    return (state >>> 0) / 0x100000000;
+  };
+}
+
+/** Subscriber games that everyone may play this week (3–5, stable for the whole KST week). */
+export function weeklyRotationIds(subscriberGameIds: string[], date = new Date()): Set<string> {
+  const random = seededRandom(weekIndex(date));
+  const count = ROTATION_MIN + Math.floor(random() * (ROTATION_MAX - ROTATION_MIN + 1));
+  const shuffled = [...subscriberGameIds].sort();
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(random() * (index + 1));
+    [shuffled[index], shuffled[swap]] = [shuffled[swap], shuffled[index]];
+  }
+  return new Set(shuffled.slice(0, count));
+}
+
+export function rotationForGames(games: Game[], date = new Date()): Set<string> {
+  return weeklyRotationIds(games.filter((game) => game.accessLevel === "subscriber").map((game) => game.id), date);
+}
+
+export type Permission = { allowed: boolean; reason?: "login" | "subscriber" | "member" };
+
+export function accessPermission(game: Pick<Game, "id" | "accessLevel">, auth: AuthState, rotation: Set<string>): Permission {
+  const level = game.accessLevel;
+  if (level === "public") return { allowed: true };
+  if (level === "subscriber" && rotation.has(game.id)) return { allowed: true };
+  if (!auth.user) return { allowed: false, reason: "login" };
+  if (auth.isAdmin || level === "login") return { allowed: true };
+  if (level === "member") return auth.isMember ? { allowed: true } : { allowed: false, reason: "member" };
+  if (auth.isSubscriber || auth.isMember) return { allowed: true };
+  return { allowed: false, reason: "subscriber" };
+}
+
+export function accessLabel(level: AccessLevel): string {
+  if (level === "public") return "PUBLIC";
+  if (level === "login") return "DEMO / LOGIN";
+  if (level === "subscriber") return "PROTOTYPE / SUBSCRIBER";
+  return "EARLY ACCESS / MEMBER";
+}

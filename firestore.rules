@@ -1,0 +1,51 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function admin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || admin());
+      // Verification fields (youtubeVerifiedUntil, memberUntil) are written only by Functions/scripts.
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'user'
+        && request.resource.data.keys().hasOnly(['role', 'displayName', 'photoURL', 'updatedAt']);
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'photoURL', 'updatedAt'
+        ]);
+      allow delete: if admin();
+    }
+
+    match /games/{gameId} {
+      allow read: if resource.data.buildStatus == 'published' || admin();
+      allow write: if admin();
+    }
+
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if false;
+      allow update: if signedIn()
+        && request.auth.uid == resource.data.authorId
+        && resource.data.imagePath == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['imagePath', 'updatedAt'])
+        && request.resource.data.imagePath == 'board-images/' + postId + '/image';
+      allow delete: if admin();
+    }
+
+    match /comments/{commentId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /likeRecords/{recordId} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stone Drop</title>
+<style>
+  :root { --bg: #101418; --panel: #171c21; --line: rgba(232,231,223,.13); --cream: #e8e7df; --muted: #899197; --orange: #ff7144; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--cream); font-family: ui-monospace, "DM Mono", Consolas, monospace; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .wrap { height: 100%; display: flex; align-items: center; justify-content: center; gap: 18px; padding: 12px; }
+  .side { display: grid; gap: 16px; min-width: 96px; font-size: 10px; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+  .side b { display: block; margin-top: 4px; color: var(--cream); font-size: 20px; letter-spacing: 0; }
+  .next { width: 44px; height: 44px; margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; display: grid; place-items: center; }
+  .next i { width: 26px; height: 26px; border-radius: 7px; }
+  .stage { position: relative; }
+  canvas { display: block; background: var(--panel); border: 1px solid var(--line); }
+  .overlay { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 8px; padding: 16px; background: rgba(16,20,24,.78); cursor: pointer; }
+  .overlay[hidden] { display: none; }
+  .overlay h1 { margin: 0; font-size: 24px; }
+  .overlay p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+  .overlay .accent { color: var(--orange); }
+  .chain { position: absolute; left: 0; right: 0; top: 38%; text-align: center; font-size: 22px; color: var(--orange); pointer-events: none; opacity: 0; transition: opacity .3s; }
+  .pad { display: none; position: fixed; bottom: 12px; left: 0; right: 0; justify-content: center; gap: 8px; }
+  .pad button { width: 62px; height: 46px; border: 1px solid var(--line); background: var(--panel); color: var(--cream); font-size: 16px; border-radius: 6px; }
+  .pad button:active { border-color: var(--orange); color: var(--orange); }
+  @media (pointer: coarse) { .pad { display: flex; } .wrap { padding-bottom: 72px; } }
+  @media (max-width: 520px) { .wrap { flex-direction: column; gap: 8px; } .side { grid-auto-flow: column; min-width: 0; gap: 18px; } .side b { font-size: 15px; } .next { width: 30px; height: 30px; } .next i { width: 18px; height: 18px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="side">
+    <div>Score<b id="score">0</b></div>
+    <div>Level<b id="level">1</b></div>
+    <div>Best<b id="best">0</b></div>
+    <div>Next<div class="next"><i id="next"></i></div></div>
+  </div>
+  <div class="stage">
+    <canvas id="board"></canvas>
+    <div class="chain" id="chain"></div>
+    <div class="overlay" id="overlay">
+      <h1 id="title">Stone Drop</h1>
+      <p id="message">←/→ 이동 · ↓ 빠르게 · SPACE/↑ 바로 떨어뜨리기<br>같은 색 3개 이상이 이어지면 부서지고, 연쇄는 점수가 배로 늘어요.<br>돌 12개를 놓을 때마다 바닥에서 한 줄이 올라옵니다.</p>
+      <p class="accent">SPACE 또는 터치로 시작</p>
+    </div>
+  </div>
+</div>
+<div class="pad"><button data-act="left">◀</button><button data-act="drop">⤓</button><button data-act="soft">▼</button><button data-act="right">▶</button></div>
+<script>
+  const COLS = 6, ROWS = 12, RISE_EVERY = 12;
+  const COLORS = ["#ff7144", "#75a9ff", "#a6cd7c", "#e8e7df"];
+  const canvas = document.getElementById("board");
+  const ctx = canvas.getContext("2d");
+  const overlay = document.getElementById("overlay");
+  const chainLabel = document.getElementById("chain");
+  const ui = { score: document.getElementById("score"), level: document.getElementById("level"), best: document.getElementById("best"), next: document.getElementById("next"), title: document.getElementById("title"), message: document.getElementById("message") };
+
+  let cell = 36, grid, piece, nextColor, score, cleared, placed, state = "ready", fallTimer = 0, softDrop = false, busy = false, last = 0;
+  let flashes = [];
+  let best = readBest();
+
+  function readBest() { try { return Number(localStorage.getItem("stone-drop-best")) || 0; } catch { return 0; } }
+  function saveBest() { try { localStorage.setItem("stone-drop-best", String(best)); } catch { /* storage unavailable */ } }
+  const randomColor = () => Math.floor(Math.random() * COLORS.length);
+  const level = () => 1 + Math.floor(cleared / 24);
+  const fallMs = () => Math.max(110, 620 - (level() - 1) * 55);
+
+  function fit() {
+    const narrow = innerWidth <= 520;
+    const coarse = matchMedia("(pointer: coarse)").matches;
+    const roomH = innerHeight - 24 - (narrow ? 70 : 0) - (coarse ? 72 : 0);
+    const roomW = innerWidth - 24 - (narrow ? 0 : 130);
+    cell = Math.max(16, Math.floor(Math.min(roomH / ROWS, roomW / COLS)));
+    const ratio = devicePixelRatio || 1;
+    canvas.style.width = `${cell * COLS}px`;
+    canvas.style.height = `${cell * ROWS}px`;
+    canvas.width = cell * COLS * ratio;
+    canvas.height = cell * ROWS * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+
+  function reset() {
+    // Start with two rows of rubble that contain no ready-made matches.
+    do {
+      grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+      for (let i = 0; i < 2; i += 1) riseRow();
+    } while (groupsToClear().length);
+    score = 0; cleared = 0; placed = 0; flashes = [];
+    nextColor = randomColor();
+    spawn();
+    updateHud();
+  }
+
+  function updateHud() {
+    ui.score.textContent = score;
+    ui.level.textContent = level();
+    ui.best.textContent = best;
+    ui.next.style.background = COLORS[nextColor];
+  }
+
+  function spawn() {
+    piece = { col: 2, row: 0, color: nextColor };
+    nextColor = randomColor();
+    fallTimer = 0;
+    if (grid[0][piece.col] !== null) gameOver();
+    updateHud();
+  }
+
+  function canMove(col, row) { return col >= 0 && col < COLS && row < ROWS && grid[row][col] === null; }
+
+  function move(delta) {
+    if (state !== "play" || busy) return;
+    if (canMove(piece.col + delta, piece.row)) piece.col += delta;
+  }
+
+  function landingRow() {
+    let row = piece.row;
+    while (canMove(piece.col, row + 1)) row += 1;
+    return row;
+  }
+
+  function hardDrop() {
+    if (state !== "play" || busy) return;
+    piece.row = landingRow();
+    land();
+  }
+
+  function groupsToClear() {
+    const seen = new Set();
+    const result = [];
+    for (let r = 0; r < ROWS; r += 1) for (let c = 0; c < COLS; c += 1) {
+      const color = grid[r][c];
+      if (color === null || seen.has(r * COLS + c)) continue;
+      const group = [];
+      const stack = [[r, c]];
+      seen.add(r * COLS + c);
+      while (stack.length) {
+        const [y, x] = stack.pop();
+        group.push([y, x]);
+        for (const [dy, dx] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const ny = y + dy, nx = x + dx;
+          if (ny < 0 || ny >= ROWS || nx < 0 || nx >= COLS || seen.has(ny * COLS + nx) || grid[ny][nx] !== color) continue;
+          seen.add(ny * COLS + nx);
+          stack.push([ny, nx]);
+        }
+      }
+      if (group.length >= 3) result.push(group);
+    }
+    return result;
+  }
+
+  function applyGravity() {
+    for (let c = 0; c < COLS; c += 1) {
+      const stones = [];
+      for (let r = ROWS - 1; r >= 0; r -= 1) if (grid[r][c] !== null) stones.push(grid[r][c]);
+      for (let r = ROWS - 1, i = 0; r >= 0; r -= 1, i += 1) grid[r][c] = stones[i] ?? null;
+    }
+  }
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function resolveBoard() {
+    let chain = 1;
+    for (;;) {
+      const groups = groupsToClear();
+      if (!groups.length) break;
+      const count = groups.reduce((sum, group) => sum + group.length, 0);
+      flashes = groups.flat();
+      score += count * 10 * chain + (count - 3) * 5;
+      cleared += count;
+      if (chain > 1) showChain(chain);
+      await wait(220);
+      for (const [r, c] of flashes) grid[r][c] = null;
+      flashes = [];
+      applyGravity();
+      await wait(120);
+      chain += 1;
+    }
+    if (score > best) { best = score; saveBest(); }
+    updateHud();
+  }
+
+  function showChain(chain) {
+    chainLabel.textContent = `${chain} CHAIN ×${chain}`;
+    chainLabel.style.opacity = 1;
+    clearTimeout(showChain.timer);
+    showChain.timer = setTimeout(() => { chainLabel.style.opacity = 0; }, 700);
+  }
+
+  function riseRow() {
+    if (grid[0].some((stone) => stone !== null)) return false;
+    grid.shift();
+    const row = [];
+    for (let c = 0; c < COLS; c += 1) {
+      let color;
+      do color = randomColor(); while (c >= 2 && row[c - 1] === color && row[c - 2] === color);
+      row.push(color);
+    }
+    grid.push(row);
+    return true;
+  }
+
+  async function land() {
+    busy = true;
+    grid[piece.row][piece.col] = piece.color;
+    piece = null;
+    placed += 1;
+    await resolveBoard();
+    if (placed % RISE_EVERY === 0) {
+      if (!riseRow()) { busy = false; return gameOver(); }
+      await resolveBoard();
+    }
+    busy = false;
+    if (state === "play") spawn();
+  }
+
+  function gameOver() {
+    state = "over";
+    ui.title.textContent = "Game over";
+    ui.message.innerHTML = `점수 ${score} · 레벨 ${level()} · 최고 ${best}`;
+    overlay.hidden = false;
+  }
+
+  function start() {
+    if (state === "play") return;
+    if (state !== "paused") reset();
+    state = "play";
+    overlay.hidden = true;
+  }
+
+  function togglePause() {
+    if (state === "play") { state = "paused"; ui.title.textContent = "Paused"; ui.message.textContent = "P 또는 터치로 계속"; overlay.hidden = false; }
+    else if (state === "paused") start();
+  }
+
+  function stone(x, y, color, alpha = 1) {
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = COLORS[color];
+    ctx.beginPath(); ctx.roundRect(x + 2, y + 2, cell - 4, cell - 4, cell * .22); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.22)";
+    ctx.beginPath(); ctx.roundRect(x + cell * .2, y + cell * .16, cell * .38, cell * .16, cell * .08); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,.18)";
+    ctx.beginPath(); ctx.roundRect(x + 2, y + cell * .72, cell - 4, cell * .26 - 2, [0, 0, cell * .22, cell * .22]); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  function draw(now) {
+    ctx.fillStyle = "#171c21";
+    ctx.fillRect(0, 0, cell * COLS, cell * ROWS);
+    ctx.strokeStyle = "rgba(232,231,223,.05)";
+    for (let c = 1; c < COLS; c += 1) { ctx.beginPath(); ctx.moveTo(c * cell, 0); ctx.lineTo(c * cell, cell * ROWS); ctx.stroke(); }
+    if (!grid) return;
+    const flashOn = Math.floor(now / 60) % 2 === 0;
+    for (let r = 0; r < ROWS; r += 1) for (let c = 0; c < COLS; c += 1) {
+      if (grid[r][c] === null) continue;
+      const flashing = flashes.some(([fr, fc]) => fr === r && fc === c);
+      stone(c * cell, r * cell, grid[r][c], flashing && flashOn ? 0.25 : 1);
+    }
+    if (piece && state === "play") {
+      stone(piece.col * cell, landingRow() * cell, piece.color, 0.18);
+      stone(piece.col * cell, piece.row * cell, piece.color);
+    }
+    ctx.fillStyle = "rgba(255,113,68,.35)";
+    ctx.fillRect(0, 0, cell * COLS, 2);
+  }
+
+  function loop(now) {
+    const delta = Math.min(100, now - last);
+    last = now;
+    if (state === "play" && piece && !busy) {
+      fallTimer += delta;
+      const interval = softDrop ? Math.min(45, fallMs()) : fallMs();
+      if (fallTimer >= interval) {
+        fallTimer = 0;
+        if (canMove(piece.col, piece.row + 1)) { piece.row += 1; if (softDrop) score += 1; }
+        else land();
+      }
+    }
+    draw(now);
+    requestAnimationFrame(loop);
+  }
+
+  addEventListener("keydown", (event) => {
+    const code = event.code;
+    if (["ArrowLeft", "ArrowRight", "ArrowDown", "ArrowUp", "Space"].includes(code)) event.preventDefault();
+    if (state !== "play") {
+      if (code === "Space" || code === "Enter") start();
+      else if (code === "KeyP" && state === "paused") start();
+      return;
+    }
+    if (code === "ArrowLeft" || code === "KeyA") move(-1);
+    else if (code === "ArrowRight" || code === "KeyD") move(1);
+    else if (code === "ArrowDown" || code === "KeyS") softDrop = true;
+    else if (code === "ArrowUp" || code === "KeyW" || code === "Space") hardDrop();
+    else if (code === "KeyP" || code === "Escape") togglePause();
+  });
+  addEventListener("keyup", (event) => { if (event.code === "ArrowDown" || event.code === "KeyS") softDrop = false; });
+  overlay.addEventListener("pointerdown", () => start());
+  document.querySelectorAll(".pad button").forEach((button) => {
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      if (state !== "play") return start();
+      const act = button.dataset.act;
+      if (act === "left") move(-1);
+      else if (act === "right") move(1);
+      else if (act === "drop") hardDrop();
+      else softDrop = true;
+    });
+    button.addEventListener("pointerup", () => { softDrop = false; });
+    button.addEventListener("pointerleave", () => { softDrop = false; });
+  });
+  canvas.addEventListener("pointerdown", (event) => {
+    if (state !== "play" || matchMedia("(pointer: coarse)").matches) return;
+    const rect = canvas.getBoundingClientRect();
+    const col = Math.floor((event.clientX - rect.left) / cell);
+    if (piece && !busy) { const delta = Math.sign(col - piece.col); if (delta === 0) hardDrop(); else move(delta); }
+  });
+  addEventListener("resize", fit);
+  addEventListener("pointerdown", () => window.focus());
+
+  fit();
+  reset();
+  requestAnimationFrame((now) => { last = now; loop(now); });
+</script>
+</body>
+</html>

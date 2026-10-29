@@ -1,0 +1,484 @@
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { getApps, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { FieldValue, Timestamp, getFirestore, type DocumentData, type DocumentSnapshot, type QuerySnapshot } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
+import { onObjectFinalized } from "firebase-functions/v2/storage";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { HttpsError, onCall, onRequest, type CallableRequest } from "firebase-functions/v2/https";
+import { defineSecret, defineString } from "firebase-functions/params";
+import { logger } from "firebase-functions";
+import mime from "mime-types";
+import unzipper from "unzipper";
+import { type AccessLevel, isAccessLevel, weeklyRotationIds } from "./access.js";
+import { monthKeyBefore, pageMonthKey } from "./month.js";
+
+if (!getApps().length) initializeApp();
+
+const db = getFirestore();
+const bucket = getStorage().bucket();
+const YOUTUBE_CHANNEL_ID = defineString("YOUTUBE_CHANNEL_ID", { default: "" });
+const PAGES_ORIGIN = defineString("PAGES_ORIGIN", { default: "https://material-stone-games.github.io" });
+const FUNCTIONS_BASE_URL = defineString("FUNCTIONS_BASE_URL", { default: "" });
+const PLAY_SESSION_SECRET = defineSecret("PLAY_SESSION_SECRET");
+
+const MAX_ZIP_BYTES = 250 * 1024 * 1024;
+const MAX_EXTRACTED_BYTES = 1024 * 1024 * 1024;
+const MAX_EXTRACTED_FILES = 20_000;
+const MAX_DESCRIPTION_LENGTH = 500;
+
+type TargetType = "post" | "game";
+
+function requireUser(request: CallableRequest<unknown>) {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Google 로그인이 필요합니다.");
+  return request.auth;
+}
+
+function requireAdmin(request: CallableRequest<unknown>) {
+  const auth = requireUser(request);
+  if (auth.token.admin !== true) throw new HttpsError("permission-denied", "관리자 권한이 필요합니다.");
+  return auth;
+}
+
+function normalizeTitle(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR");
+}
+
+function secretValue(): string {
+  return PLAY_SESSION_SECRET.value() || process.env.PLAY_SESSION_SECRET || "local-development-secret";
+}
+
+function createSessionToken(payload: { gameId: string; versionId: string; uid: string | null; level: AccessLevel; expiresAt: number }): string {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = createHmac("sha256", secretValue()).update(encoded).digest("base64url");
+  return `${encoded}.${signature}`;
+}
+
+function readSessionToken(value: string): { gameId: string; versionId: string; uid: string | null; level: AccessLevel; expiresAt: number } | null {
+  const [encoded, signature] = value.split(".");
+  if (!encoded || !signature) return null;
+  const expected = createHmac("sha256", secretValue()).update(encoded).digest("base64url");
+  if (expected.length !== signature.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as { gameId: string; versionId: string; uid: string | null; level: AccessLevel; expiresAt: number };
+    if (!payload.gameId || !payload.versionId || !payload.expiresAt || payload.expiresAt < Date.now() || !isAccessLevel(payload.level)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function isActiveUntil(value: unknown): boolean {
+  return value instanceof Timestamp && value.toMillis() > Date.now();
+}
+
+async function userStatus(uid: string): Promise<{ subscriber: boolean; member: boolean }> {
+  const snapshot = await db.doc(`users/${uid}`).get();
+  return { subscriber: isActiveUntil(snapshot.get("youtubeVerifiedUntil")), member: isActiveUntil(snapshot.get("memberUntil")) };
+}
+
+async function inWeeklyRotation(gameId: string): Promise<boolean> {
+  const snapshot = await db.collection("games").where("buildStatus", "==", "published").where("accessLevel", "==", "subscriber").select().get();
+  return weeklyRotationIds(snapshot.docs.map((doc) => doc.id)).has(gameId);
+}
+
+async function canPlay(game: DocumentSnapshot<DocumentData>, request: CallableRequest<unknown>): Promise<boolean> {
+  const level = game.get("accessLevel") as AccessLevel;
+  if (level === "public") return true;
+  if (level === "subscriber" && (await inWeeklyRotation(game.id))) return true;
+  if (!request.auth) return false;
+  if (request.auth.token.admin === true || level === "login") return true;
+  const status = await userStatus(request.auth.uid);
+  return level === "member" ? status.member : status.subscriber || status.member;
+}
+
+function readGameMeta(data: Record<string, unknown>) {
+  const title = typeof data.title === "string" ? data.title.trim() : "";
+  const description = typeof data.description === "string" ? data.description.trim() : "";
+  const genres = Array.isArray(data.genres) ? data.genres.filter((genre): genre is string => typeof genre === "string").map((genre) => genre.trim()).filter(Boolean).slice(0, 8) : [];
+  const accessLevel = isAccessLevel(data.accessLevel) ? data.accessLevel : null;
+  if (!title || title.length > 80 || !accessLevel) throw new HttpsError("invalid-argument", "게임 제목과 접근 등급을 확인해 주세요.");
+  if (description.length > MAX_DESCRIPTION_LENGTH) throw new HttpsError("invalid-argument", `설명은 ${MAX_DESCRIPTION_LENGTH}자 이하로 작성해 주세요.`);
+  return { title, titleKey: normalizeTitle(title), description, genres, accessLevel };
+}
+
+export const verifyYoutubeSubscription = onCall({ region: "asia-northeast3", maxInstances: 2 }, async (request) => {
+  const auth = requireUser(request);
+  const accessToken = typeof request.data?.youtubeAccessToken === "string" ? request.data.youtubeAccessToken : "";
+  const channelId = YOUTUBE_CHANNEL_ID.value();
+  if (!accessToken || !channelId) throw new HttpsError("failed-precondition", "YouTube 채널 ID 또는 권한 동의가 설정되지 않았습니다.");
+
+  const url = new URL("https://www.googleapis.com/youtube/v3/subscriptions");
+  url.searchParams.set("part", "snippet");
+  url.searchParams.set("mine", "true");
+  url.searchParams.set("forChannelId", channelId);
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!response.ok) throw new HttpsError("permission-denied", "YouTube 구독 정보를 확인하지 못했습니다.");
+  const data = (await response.json()) as { items?: unknown[] };
+  if (!data.items?.length) throw new HttpsError("permission-denied", "Material Stone YouTube 채널 구독을 확인하지 못했습니다.");
+
+  const verifiedUntil = Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000);
+  await db.doc(`users/${auth.uid}`).set({ youtubeVerifiedUntil: verifiedUntil, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return { verifiedUntil: verifiedUntil.toDate().toISOString() };
+});
+
+export const createOrUpdateGameDraft = onCall({ region: "asia-northeast3", maxInstances: 2 }, async (request) => {
+  const auth = requireAdmin(request);
+  const data = (request.data ?? {}) as Record<string, unknown>;
+  const meta = readGameMeta(data);
+
+  let gameRef = data.existingGameId ? db.doc(`games/${String(data.existingGameId)}`) : null;
+  let existing = gameRef ? await gameRef.get() : null;
+  if (!gameRef || !existing?.exists) {
+    const match = await db.collection("games").where("titleKey", "==", meta.titleKey).limit(1).get();
+    if (!match.empty) {
+      const matched = match.docs[0];
+      if (matched) {
+        gameRef = matched.ref;
+        existing = matched;
+      }
+    }
+  }
+  if (!gameRef) gameRef = db.collection("games").doc();
+
+  const versionId = randomUUID();
+  const gameId = gameRef.id;
+  const buildPath = `incoming-builds/${auth.uid}/${gameId}/${versionId}.zip`;
+  const coverPath = `game-covers/${gameId}/cover`;
+  const payload: Record<string, unknown> = { ...meta, coverPath, buildError: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() };
+  if (existing?.exists && existing.get("buildStatus") === "published") {
+    // Keep the current build playable until the new one is processed.
+    payload.pendingVersionId = versionId;
+  } else {
+    payload.buildVersionId = versionId;
+    payload.buildStatus = "processing";
+    payload.buildRoot = `game-builds/${gameId}/${versionId}`;
+    payload.pendingVersionId = FieldValue.delete();
+  }
+  if (!existing?.exists) {
+    payload.createdAt = FieldValue.serverTimestamp();
+    payload.likeCount = 0;
+  }
+  await gameRef.set(payload, { merge: true });
+  return { gameId, buildPath, coverPath };
+});
+
+export const createPost = onCall({ region: "asia-northeast3", maxInstances: 3 }, async (request) => {
+  const auth = requireUser(request);
+  const text = typeof request.data?.text === "string" ? request.data.text.trim() : "";
+  const hasImage = request.data?.hasImage === true;
+  if (!text || text.length > 100) throw new HttpsError("invalid-argument", "게시글은 100자 이하로 작성해 주세요.");
+  const postRef = db.collection("posts").doc();
+  const postId = postRef.id;
+  await postRef.set({
+    text,
+    imagePath: hasImage ? `board-images/${postId}/image` : null,
+    authorId: auth.uid,
+    authorName: String(auth.token.name ?? auth.token.email ?? "visitor"),
+    likeCount: 0,
+    commentCount: 0,
+    monthKey: pageMonthKey(),
+    retentionStatus: "pending",
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return { postId, imagePath: hasImage ? `board-images/${postId}/image` : undefined };
+});
+
+export const createComment = onCall({ region: "asia-northeast3", maxInstances: 3 }, async (request) => {
+  const auth = requireUser(request);
+  const targetType: TargetType = request.data?.targetType === "game" ? "game" : "post";
+  const targetId = typeof request.data?.targetId === "string" ? request.data.targetId : "";
+  const text = typeof request.data?.text === "string" ? request.data.text.trim() : "";
+  const parentId = typeof request.data?.parentId === "string" ? request.data.parentId : null;
+  if (!targetId || !text || text.length > 50) throw new HttpsError("invalid-argument", "댓글은 50자 이하로 작성해 주세요.");
+  const target = await db.doc(`${targetType === "game" ? "games" : "posts"}/${targetId}`).get();
+  if (!target.exists) throw new HttpsError("not-found", "댓글 대상이 존재하지 않습니다.");
+  let depth: 0 | 1 = 0;
+  if (parentId) {
+    const parent = await db.doc(`comments/${parentId}`).get();
+    if (!parent.exists || parent.get("targetId") !== targetId || parent.get("targetType") !== targetType || parent.get("depth") !== 0) {
+      throw new HttpsError("invalid-argument", "답글은 1단계까지만 작성할 수 있습니다.");
+    }
+    depth = 1;
+  }
+  const commentRef = db.collection("comments").doc();
+  await commentRef.set({ targetType, targetId, parentId, depth, text, authorId: auth.uid, authorName: String(auth.token.name ?? auth.token.email ?? "visitor"), createdAt: FieldValue.serverTimestamp() });
+  await target.ref.update({ commentCount: FieldValue.increment(1) });
+  return { commentId: commentRef.id };
+});
+
+export const toggleLike = onCall({ region: "asia-northeast3", maxInstances: 3 }, async (request) => {
+  const auth = requireUser(request);
+  const targetType: TargetType = request.data?.targetType === "game" ? "game" : "post";
+  const targetId = typeof request.data?.targetId === "string" ? request.data.targetId : "";
+  if (!targetId) throw new HttpsError("invalid-argument", "좋아요 대상을 확인해 주세요.");
+  const targetRef = db.doc(`${targetType === "game" ? "games" : "posts"}/${targetId}`);
+  const recordRef = db.doc(`likeRecords/${targetType}_${targetId}_${auth.uid}`);
+  const result = await db.runTransaction(async (transaction) => {
+    const [target, record] = await Promise.all([transaction.get(targetRef), transaction.get(recordRef)]);
+    if (!target.exists) throw new HttpsError("not-found", "좋아요 대상을 찾을 수 없습니다.");
+    const current = Number(target.get("likeCount") ?? 0);
+    if (record.exists) {
+      transaction.delete(recordRef);
+      transaction.update(targetRef, { likeCount: Math.max(0, current - 1) });
+      return { liked: false, likeCount: Math.max(0, current - 1) };
+    }
+    transaction.set(recordRef, { targetType, targetId, uid: auth.uid, createdAt: FieldValue.serverTimestamp() });
+    transaction.update(targetRef, { likeCount: current + 1 });
+    return { liked: true, likeCount: current + 1 };
+  });
+  return result;
+});
+
+export const getPlaySession = onCall({ region: "asia-northeast3", maxInstances: 3, secrets: [PLAY_SESSION_SECRET] }, async (request) => {
+  const gameId = typeof request.data?.gameId === "string" ? request.data.gameId : "";
+  if (!gameId) throw new HttpsError("invalid-argument", "게임을 확인해 주세요.");
+  const game = await db.doc(`games/${gameId}`).get();
+  if (!game.exists || game.get("buildStatus") !== "published") throw new HttpsError("not-found", "아직 공개되지 않은 빌드입니다.");
+  if (!(await canPlay(game, request))) throw new HttpsError("permission-denied", "현재 계정에는 이 빌드를 플레이할 권한이 없습니다.");
+  const level = game.get("accessLevel") as AccessLevel;
+  const token = createSessionToken({ gameId, versionId: String(game.get("buildVersionId")), uid: request.auth?.uid ?? null, level, expiresAt: Date.now() + 2 * 60 * 60 * 1000 });
+  const path = `/s/${token}/g/${encodeURIComponent(gameId)}/index.html`;
+  const base = FUNCTIONS_BASE_URL.value().replace(/\/$/, "");
+  return { playPath: path, playUrl: base ? `${base}/playGateway${path}` : undefined };
+});
+
+export const playGateway = onRequest({ region: "asia-northeast3", maxInstances: 3, secrets: [PLAY_SESSION_SECRET], cors: true }, async (request, response) => {
+  const match = request.path.match(/^\/s\/([^/]+)\/g\/([^/]+)\/(.*)$/);
+  if (!match) {
+    response.status(404).send("Not found");
+    return;
+  }
+  const tokenValue = match[1];
+  const gameIdValue = match[2];
+  const pathValue = match[3];
+  if (!tokenValue || !gameIdValue) {
+    response.status(404).send("Not found");
+    return;
+  }
+  const token = readSessionToken(tokenValue);
+  const gameId = decodeURIComponent(gameIdValue);
+  if (!token || token.gameId !== gameId) {
+    response.status(403).send("Session expired");
+    return;
+  }
+  const relativePath = decodeURIComponent(pathValue || "index.html").replaceAll("\\", "/");
+  if (relativePath.startsWith("/") || relativePath.split("/").some((part) => part === ".." || part.includes("\0"))) {
+    response.status(400).send("Invalid path");
+    return;
+  }
+  const file = bucket.file(`game-builds/${gameId}/${token.versionId}/${relativePath}`);
+  const [exists] = await file.exists();
+  if (!exists) {
+    response.status(404).send("Asset not found");
+    return;
+  }
+  const { contentType, contentEncoding } = assetHeaders(relativePath);
+  response.set("Content-Type", contentType);
+  // Unity WebGL ships pre-compressed .gz/.br assets that the browser must decode itself.
+  if (contentEncoding) response.set("Content-Encoding", contentEncoding);
+  response.set("Cache-Control", "private, max-age=300");
+  response.set("Content-Security-Policy", `frame-ancestors ${PAGES_ORIGIN.value()}`);
+  response.set("X-Content-Type-Options", "nosniff");
+  file.createReadStream().on("error", () => response.end()).pipe(response);
+});
+
+function assetHeaders(path: string): { contentType: string; contentEncoding?: "gzip" | "br" } {
+  const contentEncoding = path.endsWith(".gz") ? "gzip" : path.endsWith(".br") ? "br" : undefined;
+  const basePath = contentEncoding ? path.slice(0, -3) : path;
+  const contentType = basePath.endsWith(".data") ? "application/octet-stream" : mime.lookup(basePath) || "application/octet-stream";
+  return { contentType, contentEncoding };
+}
+
+function safeArchivePath(value: string): string {
+  const normalized = value.replaceAll("\\", "/").replace(/^\.\/+/, "");
+  if (!normalized || normalized.startsWith("/") || normalized.split("/").some((part) => part === ".." || part.includes("\0"))) throw new Error("Unsafe archive path");
+  return normalized;
+}
+
+/** Returns the folder prefix holding index.html: "" for the ZIP root, or a single wrapping folder. */
+function buildRootPrefix(paths: string[]): string {
+  if (paths.includes("index.html")) return "";
+  const topLevel = new Set(paths.map((path) => path.split("/")[0]));
+  const [folder] = [...topLevel];
+  if (topLevel.size === 1 && folder && paths.includes(`${folder}/index.html`)) return `${folder}/`;
+  throw new Error("ZIP 루트(또는 단일 최상위 폴더)에 index.html이 필요합니다.");
+}
+
+async function deletePrefix(prefix: string, keep?: (name: string) => boolean): Promise<number> {
+  const [files] = await bucket.getFiles({ prefix });
+  const targets = files.filter((file) => !keep?.(file.name));
+  await Promise.all(targets.map((file) => file.delete().catch(() => undefined)));
+  return targets.length;
+}
+
+export const processBuildZip = onObjectFinalized({ region: "asia-northeast3", memory: "2GiB", timeoutSeconds: 540 }, async (event) => {
+  const object = event.data;
+  const objectName = object.name ?? "";
+  const match = objectName.match(/^incoming-builds\/([^/]+)\/([^/]+)\/([^/]+)\.zip$/);
+  if (!match || !object.bucket) return;
+  const [, , gameId, versionId] = match;
+  const source = getStorage().bucket(object.bucket).file(objectName);
+  const gameRef = db.doc(`games/${gameId}`);
+  const game = await gameRef.get();
+  const isUpdate = game.exists && game.get("pendingVersionId") === versionId;
+  const isInitial = game.exists && game.get("buildVersionId") === versionId && game.get("buildStatus") !== "published";
+  if (!isUpdate && !isInitial) {
+    await source.delete().catch(() => undefined);
+    return;
+  }
+  const versionRoot = `game-builds/${gameId}/${versionId}/`;
+  try {
+    if (Number(object.size ?? 0) > MAX_ZIP_BYTES) throw new Error("ZIP은 250MiB 이하만 업로드할 수 있습니다.");
+    const [zipBuffer] = await source.download();
+    const directory = await unzipper.Open.buffer(zipBuffer);
+    const files = directory.files.filter((entry) => entry.type === "File" && !entry.path.startsWith("__MACOSX/"));
+    if (files.length > MAX_EXTRACTED_FILES) throw new Error("ZIP 안의 파일이 너무 많습니다.");
+    const paths = files.map((entry) => safeArchivePath(entry.path));
+    const prefix = buildRootPrefix(paths);
+    let extractedBytes = 0;
+    for (const [index, entry] of files.entries()) {
+      const path = (paths[index] ?? "").slice(prefix.length);
+      if (!path) continue;
+      const content = await entry.buffer();
+      extractedBytes += content.byteLength;
+      if (extractedBytes > MAX_EXTRACTED_BYTES) throw new Error("압축 해제 결과가 너무 큽니다.");
+      await bucket.file(`${versionRoot}${path}`).save(content, { resumable: false, metadata: { contentType: assetHeaders(path).contentType } });
+    }
+    await gameRef.update({ buildVersionId: versionId, buildStatus: "published", buildRoot: versionRoot.slice(0, -1), pendingVersionId: FieldValue.delete(), buildError: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() });
+    const removed = await deletePrefix(`game-builds/${gameId}/`, (name) => name.startsWith(versionRoot));
+    logger.info("Published game build", { gameId, versionId, files: files.length, removedOldFiles: removed });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "ZIP processing failed";
+    await deletePrefix(versionRoot);
+    // A failed update keeps the previous build published.
+    await gameRef.update(isUpdate
+      ? { buildError: message, pendingVersionId: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() }
+      : { buildStatus: "failed", buildError: message, updatedAt: FieldValue.serverTimestamp() });
+    logger.error("Failed to process game build", { gameId, versionId, error });
+  } finally {
+    await source.delete().catch(() => undefined);
+  }
+});
+
+export const updateGameMeta = onCall({ region: "asia-northeast3", maxInstances: 2 }, async (request) => {
+  requireAdmin(request);
+  const data = (request.data ?? {}) as Record<string, unknown>;
+  const gameId = typeof data.gameId === "string" ? data.gameId : "";
+  const meta = readGameMeta(data);
+  const gameRef = db.doc(`games/${gameId}`);
+  if (!gameId || !(await gameRef.get()).exists) throw new HttpsError("not-found", "게임을 찾을 수 없습니다.");
+  const duplicate = await db.collection("games").where("titleKey", "==", meta.titleKey).limit(2).get();
+  if (duplicate.docs.some((doc) => doc.id !== gameId)) throw new HttpsError("already-exists", "같은 제목의 게임이 이미 있습니다.");
+  await gameRef.update({ ...meta, updatedAt: FieldValue.serverTimestamp() });
+  return { ok: true };
+});
+
+async function deleteDocs(snapshot: QuerySnapshot<DocumentData>): Promise<void> {
+  for (let index = 0; index < snapshot.docs.length; index += 400) {
+    const batch = db.batch();
+    snapshot.docs.slice(index, index + 400).forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+  }
+}
+
+export const deleteGame = onCall({ region: "asia-northeast3", maxInstances: 1, timeoutSeconds: 300 }, async (request) => {
+  requireAdmin(request);
+  const gameId = typeof request.data?.gameId === "string" ? request.data.gameId : "";
+  const gameRef = db.doc(`games/${gameId}`);
+  if (!gameId || !(await gameRef.get()).exists) throw new HttpsError("not-found", "게임을 찾을 수 없습니다.");
+  await deletePrefix(`game-builds/${gameId}/`);
+  await deletePrefix(`game-covers/${gameId}/`);
+  const [incoming] = await bucket.getFiles({ prefix: "incoming-builds/" });
+  await Promise.all(incoming.filter((file) => file.name.split("/")[2] === gameId).map((file) => file.delete().catch(() => undefined)));
+  await deleteDocs(await db.collection("comments").where("targetType", "==", "game").where("targetId", "==", gameId).get());
+  await deleteDocs(await db.collection("likeRecords").where("targetType", "==", "game").where("targetId", "==", gameId).get());
+  await gameRef.delete();
+  logger.info("Deleted game", { gameId });
+  return { ok: true };
+});
+
+async function buildStorageReport() {
+  const [files] = await bucket.getFiles();
+  const games = new Map((await db.collection("games").get()).docs.map((doc) => [doc.id, doc]));
+  const postIds = new Set((await db.collection("posts").select().get()).docs.map((doc) => doc.id));
+  const liveVersions = (gameId: string) => {
+    const game = games.get(gameId);
+    return new Set([game?.get("buildVersionId"), game?.get("pendingVersionId")].filter(Boolean));
+  };
+  const byPrefix: Record<string, { bytes: number; files: number }> = {};
+  const orphanedPaths: string[] = [];
+  const builtGames = new Set<string>();
+  let totalBytes = 0;
+  for (const file of files) {
+    const size = Number(file.metadata.size ?? 0);
+    const [prefix = "", first = "", second = "", third = ""] = file.name.split("/");
+    totalBytes += size;
+    byPrefix[prefix] = { bytes: (byPrefix[prefix]?.bytes ?? 0) + size, files: (byPrefix[prefix]?.files ?? 0) + 1 };
+    let orphan = false;
+    if (prefix === "game-builds") {
+      orphan = !liveVersions(first).has(second);
+      if (!orphan && second === games.get(first)?.get("buildVersionId")) builtGames.add(first);
+    } else if (prefix === "game-covers") orphan = !games.has(first);
+    else if (prefix === "incoming-builds") orphan = !liveVersions(second).has(third.replace(/\.zip$/, ""));
+    else if (prefix === "board-images") orphan = !postIds.has(first);
+    if (orphan) orphanedPaths.push(file.name);
+  }
+  const gamesWithoutBuild = [...games.values()].filter((game) => game.get("buildStatus") === "published" && !builtGames.has(game.id)).map((game) => game.id);
+  return { totalBytes, fileCount: files.length, byPrefix, orphanedPaths, gamesWithoutBuild };
+}
+
+export const storageReport = onCall({ region: "asia-northeast3", maxInstances: 1, timeoutSeconds: 120 }, async (request) => {
+  requireAdmin(request);
+  return buildStorageReport();
+});
+
+export const deleteStorageOrphans = onCall({ region: "asia-northeast3", maxInstances: 1, timeoutSeconds: 300 }, async (request) => {
+  requireAdmin(request);
+  const requested: unknown[] = Array.isArray(request.data?.paths) ? request.data.paths : [];
+  // Only delete paths that are still orphaned when the request arrives.
+  const orphaned = new Set((await buildStorageReport()).orphanedPaths);
+  const targets = requested.filter((path): path is string => typeof path === "string" && orphaned.has(path));
+  await Promise.all(targets.map((path) => bucket.file(path).delete().catch(() => undefined)));
+  logger.info("Deleted orphaned storage objects", { count: targets.length });
+  return { deleted: targets.length };
+});
+
+async function deletePostData(snapshot: DocumentSnapshot<DocumentData>): Promise<void> {
+  const postId = snapshot.id;
+  const comments = await db.collection("comments").where("targetType", "==", "post").where("targetId", "==", postId).get();
+  let batch = db.batch();
+  let count = 0;
+  for (const comment of comments.docs) {
+    batch.delete(comment.ref);
+    count += 1;
+    if (count >= 400) { await batch.commit(); batch = db.batch(); count = 0; }
+  }
+  batch.delete(snapshot.ref);
+  await batch.commit();
+  const imagePath = snapshot.get("imagePath") as string | null | undefined;
+  if (imagePath) await bucket.file(imagePath).delete().catch(() => undefined);
+}
+
+export const monthlyRetentionSweep = onSchedule({ schedule: "0 3 1 * *", timeZone: "Asia/Seoul", region: "asia-northeast3", maxInstances: 1 }, async () => {
+  // Runs on the 1st (KST) and evaluates the month two months earlier, e.g. Aug 1 → June.
+  const monthKey = monthKeyBefore(2);
+  const snapshot = await db.collection("posts").where("monthKey", "==", monthKey).get();
+  const posts = snapshot.docs.filter((post) => post.get("retentionStatus") !== "preserved").sort((left, right) => {
+    const likes = Number(right.get("likeCount") ?? 0) - Number(left.get("likeCount") ?? 0);
+    if (likes !== 0) return likes;
+    const leftDate = (left.get("createdAt") as Timestamp | undefined)?.toMillis() ?? 0;
+    const rightDate = (right.get("createdAt") as Timestamp | undefined)?.toMillis() ?? 0;
+    if (leftDate !== rightDate) return leftDate - rightDate;
+    return left.id.localeCompare(right.id);
+  });
+  const winner = posts[0];
+  if (winner && Number(winner.get("likeCount") ?? 0) >= 10) {
+    await winner.ref.update({ retentionStatus: "preserved", preservedAt: FieldValue.serverTimestamp() });
+  }
+  for (const post of posts) {
+    if (winner && post.id === winner.id && Number(winner.get("likeCount") ?? 0) >= 10) continue;
+    await deletePostData(post);
+  }
+  logger.info("Monthly retention sweep complete", { monthKey, evaluated: posts.length, preserved: winner && Number(winner.get("likeCount") ?? 0) >= 10 ? winner.id : null });
+});

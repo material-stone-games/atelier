@@ -1,0 +1,44 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function admin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    match /game-covers/{gameId}/cover {
+      allow read: if true;
+      allow create, update: if admin()
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if admin();
+    }
+
+    match /incoming-builds/{uid}/{gameId}/{versionId}.zip {
+      allow read: if false;
+      allow create, update: if admin()
+        && request.auth.uid == uid
+        && request.resource.size <= 250 * 1024 * 1024
+        && request.resource.contentType.matches('application/(zip|x-zip-compressed)');
+      allow delete: if admin();
+    }
+
+    match /game-builds/{gameId}/{versionId}/{filePath=**} {
+      allow read, write: if false;
+    }
+
+    match /board-images/{postId}/image {
+      allow read: if true;
+      allow create, update: if signedIn()
+        && firestore.get(/databases/(default)/documents/posts/$(postId)).data.authorId == request.auth.uid
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if admin()
+        || (signedIn() && firestore.get(/databases/(default)/documents/posts/$(postId)).data.authorId == request.auth.uid);
+    }
+  }
+}

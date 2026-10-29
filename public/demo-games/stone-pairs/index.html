@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stone Pairs</title>
+<style>
+  :root { --bg: #101418; --panel: #171c21; --panel-2: #20272d; --line: rgba(232,231,223,.13); --cream: #e8e7df; --muted: #899197; --orange: #ff7144; --blue: #75a9ff; --green: #a6cd7c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--cream); font-family: ui-monospace, "DM Mono", Consolas, monospace; overflow: hidden; user-select: none; -webkit-user-select: none; }
+  .wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 12px; }
+  .hud { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; font-size: 11px; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+  .hud b { color: var(--cream); }
+  .hud .combo b { color: var(--orange); }
+  .board { display: grid; gap: var(--gap); }
+  .tile { width: var(--size); height: var(--size); padding: 0; border: 0; background: none; perspective: 600px; cursor: pointer; }
+  .tile .inner { position: relative; width: 100%; height: 100%; transition: transform .32s; transform-style: preserve-3d; }
+  .tile.open .inner, .tile.done .inner { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 10px; backface-visibility: hidden; border: 1px solid var(--line); }
+  .back { background: linear-gradient(140deg, var(--panel-2), var(--panel)); }
+  .back::after { content: ""; width: 26%; height: 26%; border-radius: 30%; border: 1px solid rgba(232,231,223,.18); transform: rotate(45deg); }
+  .front { transform: rotateY(180deg); background: #1d2328; font-size: calc(var(--size) * .44); }
+  .tile.done .front { opacity: .38; }
+  .tile.miss .front { border-color: rgba(255,113,68,.7); }
+  .tile:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; border-radius: 10px; }
+  .overlay { position: fixed; inset: 0; display: grid; place-content: center; text-align: center; gap: 8px; padding: 18px; background: rgba(16,20,24,.8); cursor: pointer; }
+  .overlay[hidden] { display: none; }
+  .overlay h1 { margin: 0; font-size: 26px; }
+  .overlay p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+  .overlay .accent { color: var(--orange); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud">
+    <span>Stage <b id="stage">1</b></span><span>Score <b id="score">0</b></span><span class="combo">Combo <b id="combo">0</b></span><span>Time <b id="time">0</b></span><span>Best <b id="best">0</b></span>
+  </div>
+  <div class="board" id="board"></div>
+</div>
+<div class="overlay" id="overlay">
+  <h1 id="title">Stone Pairs</h1>
+  <p id="message">돌판 두 장을 뒤집어 같은 문양을 찾으세요.<br>연속으로 맞히면 콤보 점수 · 스테이지마다 판이 커집니다.<br>시작하면 2초 동안 모든 문양이 보여요.</p>
+  <p class="accent">SPACE 또는 터치로 시작</p>
+</div>
+<script>
+  const STAGES = [[4, 3], [4, 4], [5, 4], [6, 5], [6, 6]];
+  const SYMBOLS = [
+    ["◆", "#ff7144"], ["●", "#75a9ff"], ["▲", "#a6cd7c"], ["■", "#e8e7df"], ["★", "#ffd27a"], ["✦", "#ff7144"],
+    ["✚", "#75a9ff"], ["☾", "#ffd27a"], ["♠", "#a6cd7c"], ["♣", "#e8e7df"], ["♥", "#ff7144"], ["✿", "#c9a2ff"],
+    ["☀", "#ffd27a"], ["♪", "#75a9ff"], ["⬟", "#a6cd7c"], ["✱", "#c9a2ff"], ["⬢", "#ff7144"], ["◐", "#e8e7df"],
+  ];
+  const boardEl = document.getElementById("board");
+  const overlay = document.getElementById("overlay");
+  const ui = { stage: document.getElementById("stage"), score: document.getElementById("score"), combo: document.getElementById("combo"), time: document.getElementById("time"), best: document.getElementById("best"), title: document.getElementById("title"), message: document.getElementById("message") };
+
+  let stage = 0, score = 0, combo = 0, tiles = [], open = [], locked = false, matched = 0, stageStart = 0, timer = null, state = "ready";
+  let best = readBest();
+  ui.best.textContent = best;
+
+  function readBest() { try { return Number(localStorage.getItem("stone-pairs-best")) || 0; } catch { return 0; } }
+  function saveBest() { try { localStorage.setItem("stone-pairs-best", String(best)); } catch { /* storage unavailable */ } }
+
+  function shuffle(items) {
+    for (let i = items.length - 1; i > 0; i -= 1) { const j = Math.floor(Math.random() * (i + 1)); [items[i], items[j]] = [items[j], items[i]]; }
+    return items;
+  }
+
+  function layout(cols, rows) {
+    const gap = 8;
+    const size = Math.floor(Math.min((innerWidth - 24 - gap * (cols - 1)) / cols, (innerHeight - 70 - gap * (rows - 1)) / rows, 96));
+    boardEl.style.setProperty("--size", `${Math.max(36, size)}px`);
+    boardEl.style.setProperty("--gap", `${gap}px`);
+    boardEl.style.gridTemplateColumns = `repeat(${cols}, var(--size))`;
+  }
+
+  function buildStage() {
+    const [cols, rows] = STAGES[Math.min(stage, STAGES.length - 1)];
+    const pairs = (cols * rows) / 2;
+    const picks = shuffle([...SYMBOLS]).slice(0, pairs);
+    const deck = shuffle([...picks, ...picks]);
+    layout(cols, rows);
+    boardEl.innerHTML = "";
+    tiles = deck.map(([glyph, color], index) => {
+      const button = document.createElement("button");
+      button.className = "tile open";
+      button.setAttribute("aria-label", "뒤집힌 돌판");
+      button.innerHTML = `<div class="inner"><div class="face back"></div><div class="face front" style="color:${color}">${glyph}</div></div>`;
+      button.addEventListener("click", () => flip(index));
+      boardEl.appendChild(button);
+      return { glyph, el: button, done: false };
+    });
+    open = []; matched = 0; locked = true;
+    ui.stage.textContent = stage + 1;
+    // Brief preview so the first guesses are memory, not luck.
+    setTimeout(() => {
+      tiles.forEach((tile) => tile.el.classList.remove("open"));
+      locked = false;
+      stageStart = performance.now();
+    }, 2000);
+  }
+
+  function flip(index) {
+    const tile = tiles[index];
+    if (state !== "play" || locked || tile.done || open.includes(index)) return;
+    tile.el.classList.add("open");
+    tile.el.setAttribute("aria-label", tile.glyph);
+    open.push(index);
+    if (open.length < 2) return;
+    const [a, b] = open.map((i) => tiles[i]);
+    if (a.glyph === b.glyph) {
+      combo += 1;
+      score += 20 + combo * 10;
+      a.done = b.done = true;
+      a.el.classList.add("done"); b.el.classList.add("done");
+      matched += 1;
+      open = [];
+      updateHud();
+      if (matched === tiles.length / 2) setTimeout(clearStage, 450);
+    } else {
+      combo = 0;
+      locked = true;
+      a.el.classList.add("miss"); b.el.classList.add("miss");
+      updateHud();
+      setTimeout(() => {
+        for (const t of [a, b]) { t.el.classList.remove("open", "miss"); t.el.setAttribute("aria-label", "뒤집힌 돌판"); }
+        open = [];
+        locked = false;
+      }, 750);
+    }
+  }
+
+  function clearStage() {
+    const seconds = (performance.now() - stageStart) / 1000;
+    const timeBonus = Math.max(0, Math.round((tiles.length * 4 - seconds) * 5));
+    score += timeBonus;
+    if (score > best) { best = score; saveBest(); }
+    updateHud();
+    stage += 1;
+    if (stage >= STAGES.length) {
+      state = "over";
+      clearInterval(timer);
+      ui.title.textContent = "All stages clear";
+      ui.message.innerHTML = `최종 점수 ${score} · 최고 ${best}`;
+      overlay.hidden = false;
+      return;
+    }
+    ui.title.textContent = `Stage ${stage} clear`;
+    ui.message.innerHTML = `시간 보너스 +${timeBonus} · 현재 점수 ${score}`;
+    state = "between";
+    overlay.hidden = false;
+  }
+
+  function updateHud() {
+    ui.score.textContent = score;
+    ui.combo.textContent = combo;
+    ui.best.textContent = best;
+  }
+
+  function start() {
+    if (state === "play") return;
+    if (state !== "between") { stage = 0; score = 0; }
+    combo = 0;
+    state = "play";
+    overlay.hidden = true;
+    updateHud();
+    buildStage();
+    clearInterval(timer);
+    timer = setInterval(() => { if (!locked || stageStart) ui.time.textContent = stageStart ? Math.floor((performance.now() - stageStart) / 1000) : 0; }, 250);
+    stageStart = 0;
+  }
+
+  overlay.addEventListener("pointerdown", () => start());
+  addEventListener("keydown", (event) => { if ((event.code === "Space" || event.code === "Enter") && state !== "play") { event.preventDefault(); start(); } });
+  addEventListener("resize", () => { const [cols, rows] = STAGES[Math.min(stage, STAGES.length - 1)]; layout(cols, rows); });
+
+  layout(...STAGES[0]);
+</script>
+</body>
+</html>
