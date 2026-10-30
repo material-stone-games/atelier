@@ -18,10 +18,11 @@ service firebase.storage {
       allow delete: if admin();
     }
 
-    match /incoming-builds/{uid}/{gameId}/{versionId}.zip {
+    match /incoming-builds/{uid}/{gameId}/{fileName} {
       allow read: if false;
       allow create, update: if admin()
         && request.auth.uid == uid
+        && fileName.matches('[^/]+\\.zip')
         && request.resource.size <= 250 * 1024 * 1024
         && request.resource.contentType.matches('application/(zip|x-zip-compressed)');
       allow delete: if admin();
