@@ -115,9 +115,9 @@ export function onBossEncounter(enemies) {
 export function onEnemyKill() {
     consecutiveKills++;
     if (state.artifacts.includes('tele_charm') && consecutiveKills % 3 === 0) {
-        // 전방 20m 이동 (보스 관문은 넘지 않음)
+        // 전방 8m 이동 (보스 관문은 넘지 않음)
         const end = (Math.floor(state.distance / STAGE_LEN) + 1) * STAGE_LEN;
-        state.distance = Math.min(state.distance + 20, end - 1);
+        state.distance = Math.min(state.distance + 8, end - 1);
     }
 }
 

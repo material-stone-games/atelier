@@ -26,7 +26,7 @@ export const ARTIFACT_DEFS = {
     time_orb:    { name:'시간정지의 구',rarity:'rare',    icon:'🔮',
                    desc:'20초마다 0.5초 모든 적 정지' },
     tele_charm:  { name:'순간이동 부적',rarity:'rare',    icon:'✨',
-                   desc:'적 처치 연속 3회마다 전방 100px 이동' },
+                   desc:'적 처치 연속 3회마다 전방 8m 이동' },
 
     // ── 전설 등급 ──────────────────────────────────────
     holy_spear:  { name:'신성한 창',    rarity:'legend',  icon:'⚔',

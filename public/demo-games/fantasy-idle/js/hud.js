@@ -1,7 +1,7 @@
 // HUD 렌더링: HP바, 능력치, 재화, 유물 아이콘
 import { W, H, C, VIEW_X } from './constants.js';
 import { state } from './state.js';
-import { ARTIFACT_DEFS } from './artifact-data.js';
+import { drawArtifactIcon } from './artifact-ui.js';
 import { STAGE_LEN, regionOf, stageLabel, stageBossKind } from './stages.js';
 import { fx } from './fx.js';
 
@@ -127,27 +127,8 @@ function _renderArtifacts(ctx) {
     ctx.fillRect(baseX - 2, baseY - 2, rowW + 4, iconSize + 4);
 
     state.artifacts.slice(0, maxShow).forEach((id, i) => {
-        const def = ARTIFACT_DEFS[id];
-        if (!def) return;
-        const x = baseX + i * (iconSize + pad);
-        // 등급별 배경
-        const rarityColors = {
-            common: '#404050', rare: '#204060',
-            legend: '#402800', myth: '#300040',
-        };
-        ctx.fillStyle = rarityColors[def.rarity] ?? '#303040';
-        ctx.fillRect(x, baseY, iconSize, iconSize);
-        ctx.strokeStyle = def.rarity === 'myth' ? '#c080ff'
-            : def.rarity === 'legend' ? '#ffa040'
-            : def.rarity === 'rare' ? '#4080ff' : '#606878';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x, baseY, iconSize, iconSize);
-        ctx.font = '14px serif';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#fff';
-        ctx.fillText(def.icon, x + iconSize / 2, baseY + 17);
+        drawArtifactIcon(ctx, id, baseX + i * (iconSize + pad), baseY, iconSize);
     });
-    ctx.textAlign = 'left';
 }
 
 // 보스 HP바 (상단 중앙 별도 표시)

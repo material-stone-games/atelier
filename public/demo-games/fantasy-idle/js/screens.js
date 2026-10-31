@@ -2,7 +2,7 @@
 import { W, H, C } from './constants.js';
 import { state, savePersist, SAVE_KEY } from './state.js';
 import { REGIONS, regionIndex, stageLabel } from './stages.js';
-import { ARTIFACT_DEFS } from './artifact-data.js';
+import { drawArtifactIcon } from './artifact-ui.js';
 import { renderUpgradeTreeEmbed, handleTreeClick } from './upgrade-tree.js';
 import { drawButton } from './ui.js';
 import { drawKnight } from './player.js';
@@ -167,13 +167,16 @@ export function renderMainHub(ctx, player) {
     ctx.fillStyle = '#9070c0';
     ctx.font = 'bold 11px monospace';
     ctx.fillText(`[ 유물 (${state.artifacts.length}) ]`, 14, 224);
-    state.artifacts.slice(0, 6).forEach((id, i) => {
-        const def = ARTIFACT_DEFS[id];
-        if (!def) return;
-        ctx.fillStyle = '#7060a0';
-        ctx.font = '10px monospace';
-        ctx.fillText(`${def.icon} ${def.name}`, 14, 240 + i * 14);
+    // 아이콘 격자 (마우스를 올리면 툴팁)
+    const cols = 6, size = 22, gap = 5;
+    state.artifacts.slice(0, cols * 3).forEach((id, i) => {
+        drawArtifactIcon(ctx, id, 16 + (i % cols) * (size + gap), 232 + Math.floor(i / cols) * (size + gap), size);
     });
+    if (!state.artifacts.length) {
+        ctx.fillStyle = '#504070';
+        ctx.font = '10px monospace';
+        ctx.fillText('보스를 쓰러뜨려 획득', 14, 244);
+    }
 
     // 출발 지역 선택 (도달한 지역까지)
     state.startRegion = Math.min(state.startRegion, _maxStartRegion());

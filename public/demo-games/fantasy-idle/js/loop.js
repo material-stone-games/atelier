@@ -7,6 +7,7 @@ import { updateSpawn, updateCombat, updateEffects, renderEffects, arrangeEnemies
 import { REGIONS, STAGE_LEN, STAGES_PER_REGION, stageLabel } from './stages.js';
 import { updateArtifacts, onBossEncounter } from './artifacts.js';
 import { renderHUD, renderBossHUD } from './hud.js';
+import { beginArtifactFrame, renderArtifactTooltip } from './artifact-ui.js';
 import {
     renderUpgradeTree, handleTreeClick,
     findHoveredNode, renderTooltip, nodePos, setTreeHover,
@@ -200,6 +201,7 @@ function render() {
     ctx.setTransform(viewScale, 0, 0, viewScale, 0, 0);
     ctx.clearRect(0, 0, W, H);
     beginUiFrame();
+    beginArtifactFrame();
 
     if (state.screen === 'TITLE') {
         renderTitle(ctx);
@@ -259,6 +261,7 @@ function render() {
         }
     }
 
+    if (!state.paused) renderArtifactTooltip(ctx);
     renderUiFx(ctx);
 
     if (isMuted()) {

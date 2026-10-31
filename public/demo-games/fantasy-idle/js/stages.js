@@ -1,5 +1,5 @@
 // 스테이지 구성: 6지역 × 5스테이지, 3번째 끝에 중간 보스, 5번째 끝에 지역 보스
-export const STAGE_LEN = 250;          // 스테이지 하나의 길이(m)
+export const STAGE_LEN = 100;          // 스테이지 하나의 길이(m)
 export const STAGES_PER_REGION = 5;
 export const MINI_STAGE = 2;           // 지역 내 0부터 센 중간 보스 스테이지
 export const BOSS_STAGE = 4;           // 지역 내 0부터 센 지역 보스 스테이지

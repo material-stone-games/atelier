@@ -19,7 +19,6 @@ export function toScreen(x, y) {
 }
 export const PLAYER_X = 280;   // 중앙(400) 살짝 왼쪽
 export const MOVE_SPEED = 5;       // 초당 탐험 이동 거리(m)
-export const ENEMY_SPAWN_RATE = 70; // 적 스폰 누적 속도 (이동속도와 분리)
 
 export const C = {
     bg:      '#0f0f23',
@@ -41,17 +40,20 @@ export const C = {
     xp:      '#40c8c8',
 };
 
-// 지역 하나 = 5스테이지 × 250m (stages.js와 맞춤)
+// 지역 하나 = 5스테이지 × 100m (stages.js와 맞춤)
+const REGION_LEN = 500;
 export const BIOMES = [
-    { from: 0,    to: 1249, name: '초원',      sky: '#87ceeb', ground: '#4a7c3f', accent: '#5a9e4f' },
-    { from: 1250, to: 2499, name: '숲',        sky: '#2d4a1e', ground: '#2d5f3f', accent: '#3a7a50' },
-    { from: 2500, to: 3749, name: '사막',      sky: '#e8b84a', ground: '#c8a050', accent: '#d8b060' },
-    { from: 3750, to: 4999, name: '화산',      sky: '#3a0800', ground: '#5a1a00', accent: '#8b2500' },
-    { from: 5000, to: 6249, name: '설원',      sky: '#1a2848', ground: '#8aa8d0', accent: '#a0c0e8' },
-    { from: 6250, to: Infinity, name: '어둠의 땅', sky: '#050510', ground: '#1a0a2e', accent: '#2a1050' },
-];
+    { name: '초원',      sky: '#87ceeb', ground: '#4a7c3f', accent: '#5a9e4f' },
+    { name: '숲',        sky: '#2d4a1e', ground: '#2d5f3f', accent: '#3a7a50' },
+    { name: '사막',      sky: '#e8b84a', ground: '#c8a050', accent: '#d8b060' },
+    { name: '화산',      sky: '#3a0800', ground: '#5a1a00', accent: '#8b2500' },
+    { name: '설원',      sky: '#1a2848', ground: '#8aa8d0', accent: '#a0c0e8' },
+    { name: '어둠의 땅', sky: '#050510', ground: '#1a0a2e', accent: '#2a1050' },
+].map((b, i, all) => ({ ...b, from: i * REGION_LEN, to: i === all.length - 1 ? Infinity : (i + 1) * REGION_LEN - 1 }));
 
 export const FPS = 60;
 export const MELEE_REACH = 26;        // 플레이어 앞면에서 검이 닿는 거리(px)
 export const PLAYER_HALF = 12;        // 플레이어 몸 절반 폭
-export const ENEMY_SPAWN_DIST = 120;  // 적 스폰 간격(탐험 거리)
+export const WAVE_GAP_M = 10;         // 적 무리 출현 간격(m) — 스테이지당 약 10무리
+export const WAVE_SIZE = [2, 4];      // 무리당 적 수 (최소, 최대)
+export const ENEMY_ATK_MULT = 1.2;    // 적 공격력 전체 보정

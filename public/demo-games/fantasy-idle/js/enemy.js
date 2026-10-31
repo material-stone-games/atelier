@@ -1,5 +1,5 @@
 // Enemy 클래스: 정면 대치 위치 잡기, 공격 모션, 특수효과, 피격/사망 연출
-import { FLOOR_Y, MOVE_SPEED, SCROLL_PX, toScreen } from './constants.js';
+import { FLOOR_Y, MOVE_SPEED, SCROLL_PX, ENEMY_ATK_MULT, toScreen } from './constants.js';
 import { ENEMY_DEFS } from './enemy-data.js';
 import { state } from './state.js';
 import { groundShadow } from './draw.js';
@@ -24,7 +24,7 @@ export class Enemy {
         this.rank = opts.rank ?? def.rank;
         this.maxHp = Math.round(def.hp * (mult.hp ?? 1));
         this.hp   = this.maxHp;
-        this.atk  = Math.round(def.atk * (mult.atk ?? 1));
+        this.atk  = Math.round(def.atk * (mult.atk ?? 1) * ENEMY_ATK_MULT);
         this.def2 = Math.round(def.def * (mult.def ?? 1));  // def 이름 충돌 방지
         this.spd  = def.spd;
         this.drop = Math.round(def.drop * (mult.drop ?? 1));
@@ -50,6 +50,7 @@ export class Enemy {
 
         // 위치 잡기 (combat.arrangeEnemies에서 매 프레임 갱신)
         this.stopX = -Infinity;
+        this.stackOff = Math.random() * 10; // 겹쳐 설 때 살짝 어긋나는 거리
         this.isFront = false;
         // 애니메이션
         this.t = Math.random() * 10;

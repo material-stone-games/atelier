@@ -1,5 +1,5 @@
 // 전투 시스템: 대열 배치, 자동 공격, 데미지 계산, 스폰, 파티클
-import { W, FLOOR_Y, MELEE_REACH, MOVE_SPEED, ENEMY_SPAWN_DIST, ENEMY_SPAWN_RATE, toScreen } from './constants.js';
+import { W, FLOOR_Y, MELEE_REACH, MOVE_SPEED, WAVE_GAP_M, WAVE_SIZE, toScreen } from './constants.js';
 import { state, savePersist } from './state.js';
 import { Enemy, DEATH_TIME } from './enemy.js';
 import { REGIONS, STAGE_LEN, STAGES_PER_REGION, FINAL_STAGE, regionOf, regionIndex, stageLabel, stageBossKind, stageScale } from './stages.js';
@@ -63,33 +63,30 @@ function clearStage() {
     sfx.stageClear();
 }
 
-// 일반/엘리트 적 스폰
+// 일반/엘리트 적 스폰: 전진한 거리 WAVE_GAP_M마다 한 무리가 몰려옴
 let spawnAccum = 0;
 export function updateSpawn(dt) {
-    // 전진 중일 때만 스폰 누적, 보스전 중에는 정지
-    if (state.scrolling) spawnAccum += dt * ENEMY_SPAWN_RATE;
-    if (spawnAccum >= ENEMY_SPAWN_DIST && !state.bossActive) {
+    // 전진 중일 때만 거리 누적, 보스전 중에는 정지
+    if (state.scrolling) spawnAccum += MOVE_SPEED * dt;
+    if (spawnAccum >= WAVE_GAP_M && !state.bossActive) {
         spawnAccum = 0;
         const region = regionOf(state.stage);
-        const pool = Math.random() < 0.15 ? region.elites : region.normals;
-        const id = pool[Math.floor(Math.random() * pool.length)];
-        state.enemies.push(new Enemy(id, W + 40 + Math.random() * 80, stageScale(state.stage)));
+        const n = WAVE_SIZE[0] + Math.floor(Math.random() * (WAVE_SIZE[1] - WAVE_SIZE[0] + 1));
+        for (let i = 0; i < n; i++) {
+            const pool = Math.random() < 0.15 ? region.elites : region.normals;
+            const id = pool[Math.floor(Math.random() * pool.length)];
+            state.enemies.push(new Enemy(id, W + 40 + i * 14 + Math.random() * 20, stageScale(state.stage)));
+        }
     }
 }
 
-// 적을 지상/공중 줄로 나눠 플레이어 정면부터 차례로 세움 (겹침 방지)
+// 적을 지상/공중 줄로 나눠 플레이어 정면에 겹쳐 세움 → 다 같이 공격
 export function arrangeEnemies(player) {
-    for (const lane of [false, true]) {
-        const list = state.enemies
-            .filter(e => e.alive && e.fly === lane)
-            .sort((a, b) => a.x - b.x);
-        let limit = player.front + 4;
-        list.forEach((e, i) => {
-            // 날개 달린 적은 날개폭만큼 더 떨어져서 정지
-            e.stopX = limit + e.w / 2 + (lane ? e.w * 0.6 : 0);
-            e.isFront = i === 0;
-            limit = Math.max(e.x, e.stopX) + e.w / 2 + 6;
-        });
+    for (const e of state.enemies) {
+        if (!e.alive) continue;
+        // 날개 달린 적은 날개폭만큼 더 떨어져서 정지
+        e.stopX = player.front + 4 + e.w / 2 + (e.fly ? e.w * 0.6 : 0) + e.stackOff;
+        e.isFront = true;
     }
 }
 
