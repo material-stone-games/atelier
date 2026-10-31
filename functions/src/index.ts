@@ -230,6 +230,40 @@ export const toggleLike = onCall({ region: "asia-northeast3", enforceAppCheck: t
   return result;
 });
 
+function requireAuthorOrAdmin(request: CallableRequest<unknown>, authorId: unknown) {
+  const auth = requireUser(request);
+  if (auth.token.admin !== true && authorId !== auth.uid) throw new HttpsError("permission-denied", "본인이 작성한 글만 삭제할 수 있습니다.");
+  return auth;
+}
+
+export const deletePost = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 3 }, async (request) => {
+  const postId = typeof request.data?.postId === "string" ? request.data.postId : "";
+  if (!postId) throw new HttpsError("invalid-argument", "삭제할 게시글을 확인해 주세요.");
+  const post = await db.doc(`posts/${postId}`).get();
+  if (!post.exists) throw new HttpsError("not-found", "이미 삭제된 게시글입니다.");
+  requireAuthorOrAdmin(request, post.get("authorId"));
+  await deletePostData(post);
+  return { deleted: true };
+});
+
+export const deleteComment = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 3 }, async (request) => {
+  const commentId = typeof request.data?.commentId === "string" ? request.data.commentId : "";
+  if (!commentId) throw new HttpsError("invalid-argument", "삭제할 댓글을 확인해 주세요.");
+  const comment = await db.doc(`comments/${commentId}`).get();
+  if (!comment.exists) throw new HttpsError("not-found", "이미 삭제된 댓글입니다.");
+  requireAuthorOrAdmin(request, comment.get("authorId"));
+  // Replies hang off a top-level comment, so they go with it.
+  const replies = await db.collection("comments").where("parentId", "==", commentId).get();
+  const batch = db.batch();
+  for (const reply of replies.docs) batch.delete(reply.ref);
+  batch.delete(comment.ref);
+  const targetRef = db.doc(`${comment.get("targetType") === "game" ? "games" : "posts"}/${String(comment.get("targetId"))}`);
+  const target = await targetRef.get();
+  if (target.exists) batch.update(targetRef, { commentCount: Math.max(0, Number(target.get("commentCount") ?? 0) - (replies.size + 1)) });
+  await batch.commit();
+  return { deleted: replies.size + 1 };
+});
+
 export const getPlaySession = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 3, secrets: [PLAY_SESSION_SECRET] }, async (request) => {
   const gameId = typeof request.data?.gameId === "string" ? request.data.gameId : "";
   if (!gameId) throw new HttpsError("invalid-argument", "게임을 확인해 주세요.");
@@ -451,6 +485,12 @@ async function deletePostData(snapshot: DocumentSnapshot<DocumentData>): Promise
   let count = 0;
   for (const comment of comments.docs) {
     batch.delete(comment.ref);
+    count += 1;
+    if (count >= 400) { await batch.commit(); batch = db.batch(); count = 0; }
+  }
+  const likes = await db.collection("likeRecords").where("targetType", "==", "post").where("targetId", "==", postId).get();
+  for (const like of likes.docs) {
+    batch.delete(like.ref);
     count += 1;
     if (count >= 400) { await batch.commit(); batch = db.batch(); count = 0; }
   }

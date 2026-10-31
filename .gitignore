@@ -9,3 +9,5 @@ functions/node_modules/
 functions/.env
 *.tsbuildinfo
 .claude/
+
+test-builds/

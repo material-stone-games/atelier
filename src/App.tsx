@@ -9,6 +9,8 @@ import {
   createComment,
   createOrUpdateGameDraft,
   createPost,
+  deleteComment,
+  deletePost,
   findGameById,
   findGameByTitle,
   getConfiguredDiscordUrl,
@@ -296,7 +298,7 @@ function PostCard({ post, auth, onNotify }: { post: Post; auth: AuthState; onNot
       <div className="post-card-head"><div className="post-author"><span className="author-avatar">{post.authorName.slice(0, 1).toUpperCase()}</span><div><strong>{post.authorName}</strong><time>{formatDate(post.createdAt)}</time></div></div><span className={`retention-badge ${post.retentionStatus}`}>{post.retentionStatus === "preserved" ? "preserved" : "field note"}</span></div>
       <p className="post-text">{post.text}</p>
       {post.imageUrl ? <img className="post-image" src={post.imageUrl} alt="게시글 첨부 이미지" /> : null}
-      <div className="post-card-actions"><button className={liked ? "action-button active" : "action-button"} type="button" onClick={async () => { if (!auth.user) return onNotify("좋아요를 누르려면 Google 로그인이 필요합니다."); try { const result = await toggleLike("post", post.id); setLiked(result.liked); setLikeCount(result.likeCount); } catch (error) { onNotify(error instanceof Error ? error.message : "좋아요 처리에 실패했습니다."); } }}>♡ {likeCount}</button><button className="action-button" type="button" onClick={() => setExpanded((value) => !value)}>◌ {post.commentCount || "Comment"}</button><span className="post-date">{post.monthKey}</span></div>
+      <div className="post-card-actions"><button className={liked ? "action-button active" : "action-button"} type="button" onClick={async () => { if (!auth.user) return onNotify("좋아요를 누르려면 Google 로그인이 필요합니다."); try { const result = await toggleLike("post", post.id); setLiked(result.liked); setLikeCount(result.likeCount); } catch (error) { onNotify(error instanceof Error ? error.message : "좋아요 처리에 실패했습니다."); } }}>♡ {likeCount}</button><button className="action-button" type="button" onClick={() => setExpanded((value) => !value)}>◌ {post.commentCount || "Comment"}</button>{canDelete(auth, post.authorId) ? <button className="action-button danger" type="button" onClick={() => confirmDelete("이 게시글과 댓글을 모두 삭제할까요?", () => deletePost(post.id), "게시글을 삭제했습니다.", onNotify)}>Delete</button> : null}<span className="post-date">{post.monthKey}</span></div>
       {expanded ? <CommentThread targetType="post" targetId={post.id} auth={auth} onNotify={onNotify} /> : null}
     </article>
   );
@@ -400,11 +402,26 @@ function CommentThread({ targetType, targetId, auth, onNotify }: { targetType: T
       onNotify(reason instanceof Error ? reason.message : "댓글을 남기지 못했습니다.");
     }
   }
-  return <div className="comment-thread">{comments.length ? <div className="comment-list">{comments.filter((comment) => comment.depth === 0).map((comment) => <div className="comment-group" key={comment.id}><CommentRow comment={comment} onReply={() => setReplyTo(comment.id)} /><div className="replies">{comments.filter((reply) => reply.parentId === comment.id).map((reply) => <CommentRow comment={reply} key={reply.id} />)}</div></div>)}</div> : <p className="empty-comments">아직 댓글이 없습니다. 첫 번째 이야기를 남겨보세요.</p>}<form className="comment-form" onSubmit={submit}><input value={text} onChange={(event) => setText(event.target.value)} placeholder={replyTo ? "답글을 입력하세요" : "짧은 댓글을 남겨보세요"} maxLength={MAX_COMMENT_LENGTH} /><button className="button button-primary small" type="submit">Send</button></form>{replyTo ? <button className="cancel-reply" type="button" onClick={() => setReplyTo(undefined)}>답글 취소</button> : null}</div>;
+  return <div className="comment-thread">{comments.length ? <div className="comment-list">{comments.filter((comment) => comment.depth === 0).map((comment) => <div className="comment-group" key={comment.id}><CommentRow comment={comment} auth={auth} onNotify={onNotify} onReply={() => setReplyTo(comment.id)} /><div className="replies">{comments.filter((reply) => reply.parentId === comment.id).map((reply) => <CommentRow comment={reply} auth={auth} onNotify={onNotify} key={reply.id} />)}</div></div>)}</div> : <p className="empty-comments">아직 댓글이 없습니다. 첫 번째 이야기를 남겨보세요.</p>}<form className="comment-form" onSubmit={submit}><input value={text} onChange={(event) => setText(event.target.value)} placeholder={replyTo ? "답글을 입력하세요" : "짧은 댓글을 남겨보세요"} maxLength={MAX_COMMENT_LENGTH} /><button className="button button-primary small" type="submit">Send</button></form>{replyTo ? <button className="cancel-reply" type="button" onClick={() => setReplyTo(undefined)}>답글 취소</button> : null}</div>;
 }
 
-function CommentRow({ comment, onReply }: { comment: Comment; onReply?: () => void }) {
-  return <div className="comment-row"><span className="comment-avatar">{comment.authorName.slice(0, 1).toUpperCase()}</span><div><div className="comment-meta"><strong>{comment.authorName}</strong><time>{formatDate(comment.createdAt)}</time></div><p>{comment.text}</p>{onReply ? <button className="reply-button" type="button" onClick={onReply}>reply</button> : null}</div></div>;
+function CommentRow({ comment, auth, onNotify, onReply }: { comment: Comment; auth: AuthState; onNotify: (message: string) => void; onReply?: () => void }) {
+  const removable = canDelete(auth, comment.authorId);
+  return <div className="comment-row"><span className="comment-avatar">{comment.authorName.slice(0, 1).toUpperCase()}</span><div><div className="comment-meta"><strong>{comment.authorName}</strong><time>{formatDate(comment.createdAt)}</time></div><p>{comment.text}</p>{onReply ? <button className="reply-button" type="button" onClick={onReply}>reply</button> : null}{removable ? <button className="reply-button danger" type="button" onClick={() => confirmDelete(comment.depth === 0 ? "이 댓글과 답글을 삭제할까요?" : "이 답글을 삭제할까요?", () => deleteComment(comment.id), "댓글을 삭제했습니다.", onNotify)}>delete</button> : null}</div></div>;
+}
+
+function canDelete(auth: AuthState, authorId: string): boolean {
+  return Boolean(auth.user && (auth.isAdmin || auth.user.uid === authorId));
+}
+
+async function confirmDelete(question: string, remove: () => Promise<void>, done: string, onNotify: (message: string) => void) {
+  if (!window.confirm(question)) return;
+  try {
+    await remove();
+    onNotify(done);
+  } catch (error) {
+    onNotify(error instanceof Error ? error.message : "삭제하지 못했습니다.");
+  }
 }
 
 function AdminPage({ auth, games, onNotify }: { auth: AuthState; games: Game[]; onNotify: (message: string) => void }) {

@@ -160,6 +160,8 @@ h1 em, .hero h1 em, .page-heading h1 em, .game-detail-copy h1 em, .play-placehol
 .comment-row p { margin: 4px 0 0; color: #bfc4c3; font-size: 13px; line-height: 1.5; }
 .reply-button, .cancel-reply { padding: 0; border: 0; background: transparent; color: var(--muted); font-family: var(--mono); font-size: 9px; }
 .reply-button:hover, .cancel-reply:hover { color: var(--orange); }
+.reply-button + .reply-button.danger { margin-left: 12px; }
+.reply-button.danger:hover, .action-button.danger:hover { color: #ff5a5a; border-color: rgba(255,90,90,.44); }
 .replies { margin-left: 38px; padding-left: 17px; border-left: 1px solid var(--line); display: grid; gap: 10px; }
 .comment-form { display: flex; gap: 8px; margin-top: 27px; }
 .comment-form input, .post-composer textarea, .field-group input, .field-group select { width: 100%; border: 1px solid var(--line); outline: none; background: var(--panel); color: var(--cream); }

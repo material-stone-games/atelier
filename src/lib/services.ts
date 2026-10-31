@@ -333,6 +333,16 @@ export async function toggleLike(targetType: TargetType, targetId: string): Prom
   return (await callable({ targetType, targetId })).data;
 }
 
+export async function deletePost(postId: string): Promise<void> {
+  if (!functions) throw new Error("Firebase Functions 설정이 아직 연결되지 않았습니다.");
+  await httpsCallable<{ postId: string }, { deleted: boolean }>(functions, "deletePost")({ postId });
+}
+
+export async function deleteComment(commentId: string): Promise<void> {
+  if (!functions) throw new Error("Firebase Functions 설정이 아직 연결되지 않았습니다.");
+  await httpsCallable<{ commentId: string }, { deleted: number }>(functions, "deleteComment")({ commentId });
+}
+
 export async function createComment(
   targetType: TargetType,
   targetId: string,
