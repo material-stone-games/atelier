@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Knight Sprite Preview</title>
+  <style>
+    body {
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 32px;
+      padding: 40px;
+      font-family: monospace;
+      color: #aaa;
+    }
+    h2 { color: #8BAFC8; margin: 0; }
+    .row {
+      display: flex;
+      align-items: flex-end;
+      gap: 40px;
+    }
+    .frame {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .x1 img { image-rendering: pixelated; width: 64px; height: 96px; }
+    .x2 img { image-rendering: pixelated; width: 128px; height: 192px; }
+    .x4 img { image-rendering: pixelated; width: 256px; height: 384px; }
+    .bg-dark { background: #0d0d1a; padding: 8px; }
+    .bg-grass { background: #2d5a27; padding: 8px; }
+    .bg-dungeon { background: #3a2a1a; padding: 8px; }
+    span { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h2>검사(Knight) 픽셀 아트 스프라이트</h2>
+  <div class="row">
+    <div class="frame x1">
+      <div class="bg-dark"><img src="knight-idle.svg" alt="knight x1"></div>
+      <span>1x (64×96)</span>
+    </div>
+    <div class="frame x2">
+      <div class="bg-grass"><img src="knight-idle.svg" alt="knight x2"></div>
+      <span>2x (128×192)</span>
+    </div>
+    <div class="frame x4">
+      <div class="bg-dungeon"><img src="knight-idle.svg" alt="knight x4"></div>
+      <span>4x (256×384)</span>
+    </div>
+  </div>
+  <p>파일: <code>sprites/knight-idle.svg</code></p>
+</body>
+</html>

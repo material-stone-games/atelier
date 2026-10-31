@@ -1,0 +1,23 @@
+/* 레트로 게임 스타일 */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: monospace;
+    overflow: hidden;
+}
+
+#canvas {
+    display: block;
+    /* 크기는 loop.js에서 창에 맞춰 비율 유지로 설정 */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* 픽셀 폰트 느낌 강조 */
+canvas { font-smooth: never; -webkit-font-smoothing: none; }
