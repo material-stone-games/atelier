@@ -4,6 +4,7 @@ import { state, savePersist } from './state.js';
 import { UPGRADES, BRANCHES, canUnlock } from './upgrade-data.js';
 import { spawnUiBurst } from './fx.js';
 import { shade } from './draw.js';
+import { sfx } from './sfx.js';
 
 const BASE_LEN = 68; // 기준 branchLen (전체 화면)
 const CELL_SIZE = 52; // 그리드 셀 크기 (px)
@@ -168,11 +169,15 @@ function _renderTreeContents(ctx, cx, cy, branchLen) {
         ctx.lineWidth = owned || hover ? 2 : 1.5;
         ctx.stroke();
 
-        // 텍스트 (작게 축소되면 생략)
-        if (r >= 8) {
-            ctx.fillStyle = owned ? '#101010' : (unlocked ? shade(branch.color, 0.3) : '#4a4a5a');
-            ctx.font = `bold ${Math.round(r * 0.58)}px monospace`;
-            ctx.fillText(up.name.slice(0, 4), x, y + r * 0.2);
+        // 아이콘 (잠긴 노드는 흑백·반투명)
+        if (r >= 5) {
+            ctx.save();
+            if (!owned && !unlocked) { ctx.globalAlpha = 0.35; ctx.filter = 'grayscale(1)'; }
+            else if (!owned && !affordable) ctx.globalAlpha = 0.6;
+            ctx.font = `${Math.round(r * 1.05)}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+            ctx.textBaseline = 'middle';
+            ctx.fillText(up.icon, x, y + r * 0.06);
+            ctx.restore();
         }
         if (!owned && unlocked && r >= 7) {
             ctx.fillStyle = affordable ? C.gold : '#808080';
@@ -205,10 +210,10 @@ export function renderTooltip(ctx, upgrade, nodeX, nodeY) {
     const unlocked = canUnlock(upgrade);
     const affordable = state.gold >= upgrade.cost;
 
-    const lines = [upgrade.name, upgrade.desc];
+    const lines = [`${upgrade.icon} ${upgrade.name}`, upgrade.desc];
     if (owned)          lines.push('✓ 보유 중');
     else if (!unlocked) lines.push('🔒 이전 단계 필요');
-    else                lines.push(affordable ? `클릭해서 구매: ${upgrade.cost} G` : `비용: ${upgrade.cost} G (부족)`);
+    else                lines.push(`비용: ${upgrade.cost} G`);
 
     const padX = 8, padY = 6, lineH = 16;
     ctx.font = '11px monospace';
@@ -254,8 +259,10 @@ export function handleTreeClick(mx, my, cx = W / 2, cy = H / 2, branchLen = BASE
         const pos = nodePos(up, cx, cy, branchLen);
         spawnUiBurst(pos.x, pos.y, BRANCHES[up.branch].color);
         spawnUiBurst(pos.x, pos.y, '#ffffff');
+        sfx.buy();
     } else if (!state.upgrades.includes(up.id)) {
         denies.set(up.id, now);
+        sfx.deny();
     }
     return true;
 }

@@ -5,6 +5,7 @@ import { state } from './state.js';
 import { groundShadow } from './draw.js';
 import { drawEnemyArt } from './enemy-art.js';
 import { fx, addShake, addHitstop, spawnText, spawnProjectile, spawnRing } from './fx.js';
+import { sfx } from './sfx.js';
 
 let _eid = 0;
 const ATK_ANIM = 0.5;   // 공격 모션 길이(s)
@@ -122,6 +123,7 @@ export class Enemy {
                 this.aoeCooldown = 5.0;
                 spawnParticle(this.x, this.y, '#e88020', 12);
                 spawnRing(this.x, FLOOR_Y, '#e88020', 120, 0.4, 4);
+                sfx.slam();
             }
         }
         // 숲의 거인 광역 스턴
@@ -131,6 +133,7 @@ export class Enemy {
                 hitPlayer(player, this.atk * 0.5, { heavy: true });
                 spawnRing(this.x, FLOOR_Y, '#a0e060', 180, 0.5, 5);
                 addShake(8);
+                sfx.slam();
                 this.aoeCooldown = 3.0;
             }
         }
@@ -150,6 +153,7 @@ export class Enemy {
             this.atkTimer -= dt;
             if (this.atkTimer <= 0) {
                 this.atkAnim = 0.0001;
+                if (!ranged) sfx.enemySwing();
                 this.atkTimer = ranged ? 2.0 : 1.5;
             }
         }
@@ -158,6 +162,7 @@ export class Enemy {
     _strike(player) {
         if (this.special === 'ranged' && !this.engaged) {
             const dmg = this.atk * 0.8;
+            sfx.bow();
             spawnProjectile(this.x - this.w * 0.5, this.y - this.h * 0.6, player.x + 4, player.y - 26, '#c8a878', 420,
                 () => hitPlayer(player, dmg));
             return;
@@ -249,9 +254,11 @@ export function hitPlayer(player, amount, o = {}) {
     const p = toScreen(player.x + (Math.random() - 0.5) * 10, player.y - 52);
     spawnText(p.x, p.y, `-${dmg}`, o.color ?? '#ff5050', o.tick ? 11 : 15);
     if (o.tick) {
+        sfx.tick();
         fx.hurtFlash = Math.max(fx.hurtFlash, 0.2);
         return dmg;
     }
+    sfx.hurt();
     const ratio = dmg / player.maxHp;
     fx.hurtFlash = Math.min(1, Math.max(fx.hurtFlash, 0.35 + ratio * 3));
     addShake(o.heavy ? 8 : 3 + ratio * 20);

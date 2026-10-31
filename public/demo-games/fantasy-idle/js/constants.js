@@ -53,7 +53,6 @@ export const BIOMES = [
 
 export const FPS = 60;
 export const MELEE_REACH = 26;        // 플레이어 앞면에서 검이 닿는 거리(px)
-export const ENGAGE_RANGE = 90;       // 적 앞면이 이 거리 안에 들어오면 전진 정지
 export const PLAYER_HALF = 12;        // 플레이어 몸 절반 폭
 export const ENEMY_SPAWN_DIST = 120;  // 적 스폰 간격(탐험 거리)
 export const BOSS_INTERVAL = 1000;    // 보스 등장 거리(m)

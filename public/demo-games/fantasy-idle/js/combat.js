@@ -7,6 +7,7 @@ import { getStats } from './upgrade-data.js';
 import { applyOnHit } from './artifacts.js';
 import { STRIKE_AT } from './player.js';
 import { fx, addShake, addHitstop, spawnSlash, spawnRing, spawnCoins, spawnText } from './fx.js';
+import { sfx } from './sfx.js';
 
 // 현재 존 번호 (1~3)
 function currentZone() {
@@ -32,6 +33,7 @@ function trySpawnBoss() {
         state.enemies.push(boss);
         state.bossActive = true;
         addShake(6);
+        sfx.boss();
         spawnText(W / 2, 120, isMini ? `⚠ ${boss.name} 등장!` : `☠ 보스 ${boss.name} 등장!`, isMini ? '#ffaa40' : '#ff4040', 20);
     }
 }
@@ -71,9 +73,14 @@ export function arrangeEnemies(player) {
     }
 }
 
+// 적 앞면이 검 사거리 안에 들어왔는지
+export function inReach(player, e) {
+    return e.alive && e.left <= player.front + 4 + MELEE_REACH;
+}
+
 function findTarget(player) {
     return state.enemies
-        .filter(e => e.alive && e.left <= player.front + 4 + MELEE_REACH)
+        .filter(e => inReach(player, e))
         .sort((a, b) => a.x - b.x)[0];
 }
 
@@ -94,6 +101,7 @@ export function updateCombat(player, dt) {
     // 휘두르기 시작
     if (!player.dead && player.canAttack() && findTarget(player)) {
         player.doAttack();
+        sfx.swing();
         swingTarget = findTarget(player);
     }
 
@@ -126,6 +134,7 @@ export function updateCombat(player, dt) {
             spawnRing(e.x, cy, '#ffffff', big ? 90 : 34, 0.3, 3);
             addShake(big ? 12 : 3);
             addHitstop(big ? 0.18 : 0.05);
+            if (big) sfx.bigKill(); else sfx.kill();
             if (big) {
                 fx.slowmo = 0.7;
                 state.bossActive = false;
@@ -136,6 +145,7 @@ export function updateCombat(player, dt) {
             if (e.special === 'explode') {
                 player.takeDamage(e.atk * 1.2);
                 fx.hurtFlash = Math.max(fx.hurtFlash, 0.5);
+                sfx.explode();
                 spawnParticle(e.x, e.y, '#ff6020', 20, 1.5);
                 spawnRing(e.x, e.y - e.h / 2, '#ff8020', 60, 0.35, 5);
                 addShake(7);
@@ -177,6 +187,7 @@ function _strike(player, target, stats) {
         spawnParticle(target.left + 4, fy, isCrit ? '#ffcc00' : '#ffffff', isCrit ? 10 : 5);
     }
     spawnSlash(target.left + 2, fy, anyCrit ? '#ffd040' : '#bfe8ff', anyCrit ? 30 : 22, 1);
+    if (anyCrit) sfx.crit(); else sfx.hit();
     if (anyCrit) {
         spawnRing(target.left + 4, fy, '#ffd040', 36, 0.25, 3);
         addShake(5);
@@ -198,6 +209,7 @@ function tryDropArtifact(rank, stats) {
             if (a && !state.artifacts.includes(a)) {
                 state.artifacts.push(a);
                 spawnText(W / 2, 150, '✨ 유물 획득!', '#e0a0ff', 18);
+                sfx.artifact();
             }
         }
     }

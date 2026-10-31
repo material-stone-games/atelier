@@ -1,9 +1,9 @@
 // 메인 게임 루프: 상태 전환, 업데이트, 렌더링, 입력
-import { W, H, FLOOR_Y, MOVE_SPEED, ENGAGE_RANGE, applyCamera, toScreen } from './constants.js';
+import { W, H, FLOOR_Y, MOVE_SPEED, applyCamera, toScreen } from './constants.js';
 import { state, loadSave, savePersist, resetRun, newGame } from './state.js';
 import { Player } from './player.js';
 import { renderSky, renderWorld, renderWeather, updateWorldTime } from './world.js';
-import { updateSpawn, updateCombat, updateEffects, renderEffects, arrangeEnemies, spawnParticle, resetCombat } from './combat.js';
+import { updateSpawn, updateCombat, updateEffects, renderEffects, arrangeEnemies, spawnParticle, resetCombat, inReach } from './combat.js';
 import { updateArtifacts, onBossEncounter } from './artifacts.js';
 import { renderHUD, renderBossHUD } from './hud.js';
 import {
@@ -21,6 +21,7 @@ import {
 import { getRandomArtifact } from './artifact-data.js';
 import { fx, resetFx, updateFx, renderWorldFx, renderScreenFx, renderUiFx, addShake, addHitstop } from './fx.js';
 import { pointer, ui, beginUiFrame, buttonClickFeedback } from './ui.js';
+import { sfx, unlockAudio, toggleMute, isMuted } from './sfx.js';
 
 // 유물 드롭 접근용 글로벌 브리지
 globalThis.__fantasyImports = { getRandomArtifact };
@@ -88,6 +89,7 @@ function triggerDeath() {
     addHitstop(0.25);
     fx.hurtFlash = 1;
     spawnParticle(player.x, player.y - 24, '#ff4040', 24, 1.6);
+    sfx.death();
     savePersist();
 }
 
@@ -131,8 +133,8 @@ function update(realDt) {
     updateWorldTime(dt);
 
     if (state.screen === 'PLAYING') {
-        // 적 앞면이 가까이 오면 전진 정지 → 전투
-        state.inCombat = state.enemies.some(e => e.alive && e.left - player.front < ENGAGE_RANGE);
+        // 적이 검 사거리 안에 들어오는 순간 전진 정지 → 바로 공격
+        state.inCombat = state.enemies.some(e => inReach(player, e));
         if (!state.inCombat) state.distance += MOVE_SPEED * dt;
         player.walking = !state.inCombat;
 
@@ -142,6 +144,7 @@ function update(realDt) {
             if (stepTimer <= 0) {
                 stepTimer = 0.29;
                 spawnParticle(player.x - 4, FLOOR_Y - 1, 'rgba(230,220,200,0.6)', 2, 0.4, { g: -20, life: 0.4, size: 2.5 });
+                sfx.step();
             }
         }
 
@@ -258,6 +261,16 @@ function render() {
 
     renderUiFx(ctx);
 
+    if (isMuted()) {
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.beginPath(); ctx.roundRect(W - 86, H - 24, 80, 18, 5); ctx.fill();
+        ctx.fillStyle = '#c0c8e0';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('🔇 음소거 (M)', W - 46, H - 11);
+        ctx.textAlign = 'left';
+    }
+
     // 페이드 오버레이
     if (state.fade > 0) {
         ctx.fillStyle = `rgba(0,0,0,${state.fade})`;
@@ -301,6 +314,7 @@ function _updateHover(mx, my) {
 
 // ── 입력 처리 (마우스 + 터치 공통) ─────────────────────
 canvas.addEventListener('pointerdown', e => {
+    unlockAudio();
     const { mx, my } = getCanvasPos(e);
     pointer.x = mx; pointer.y = my; pointer.down = true;
     canvas.setPointerCapture(e.pointerId);
@@ -386,7 +400,7 @@ function handleClick(mx, my) {
 
     if (state.screen === 'TITLE') {
         const action = handleTitleClick(mx, my);
-        if (action === 'NEW_GAME') { newGame(); fadeToScreen('PLAYING'); }
+        if (action === 'NEW_GAME') { newGame(); sfx.start(); fadeToScreen('PLAYING'); }
         if (action === 'LOAD')     { player = new Player(); fadeToScreen('MAIN'); }
     } else if (state.screen === 'MAIN') {
         const zoom = zoomButtonAt(mx, my);
@@ -403,7 +417,7 @@ function handleClick(mx, my) {
             return;
         }
         const action = handleHubClick(mx, my, player, 0);
-        if (action === 'START') fadeToScreen('PLAYING');
+        if (action === 'START') { sfx.start(); fadeToScreen('PLAYING'); }
     } else if (state.screen === 'DEAD') {
         const action = handleDeadClick(mx, my);
         if (action === 'MAIN') fadeToScreen('MAIN');
@@ -419,6 +433,8 @@ function handleClick(mx, my) {
 }
 
 document.addEventListener('keydown', e => {
+    unlockAudio();
+    if (e.key === 'm' || e.key === 'M' || e.key === 'ㅡ') toggleMute();
     if (e.key === 'Escape') {
         if (state.screen === 'PLAYING') state.paused = !state.paused;
         if (state.screen === 'UPGRADE') fadeToScreen('MAIN');

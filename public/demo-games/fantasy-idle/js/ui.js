@@ -1,6 +1,7 @@
 // 버튼 UI: 포인터 상태, 호버/눌림 애니메이션, 클릭 피드백
 import { shade, roundRect } from './draw.js';
 import { spawnUiBurst } from './fx.js';
+import { sfx } from './sfx.js';
 
 export const pointer = { x: -1, y: -1, down: false };
 export const ui = { hoverButton: false };
@@ -22,7 +23,9 @@ export function drawButton(ctx, x, y, w, h, label, color, bg, opts = {}) {
     if (hover) ui.hoverButton = true;
     frameButtons.push({ x, y, w, h, color, disabled: !!opts.disabled });
 
-    const st = anim.get(key) ?? { s: 1, lift: 0 };
+    const st = anim.get(key) ?? { s: 1, lift: 0, hover: false };
+    if (hover && !st.hover) sfx.hover();
+    st.hover = hover;
     const ts = pressed ? 0.93 : hover ? 1.06 : 1;
     const tl = pressed ? 0 : hover ? 2 : 0;
     st.s += (ts - st.s) * 0.35;
@@ -80,6 +83,7 @@ export function buttonClickFeedback(mx, my) {
         const b = frameButtons[i];
         if (!b.disabled && mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
             spawnUiBurst(mx, my, b.color);
+            sfx.click();
             return true;
         }
     }

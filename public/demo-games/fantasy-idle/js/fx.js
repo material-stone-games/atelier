@@ -1,6 +1,7 @@
 // 코인·팝업 텍스트는 화면 좌표, 나머지는 월드 좌표
 // 게임 감각(Juice) 효과: 화면 흔들림, 히트스톱, 참격, 링, 코인, 투사체, 비네트
 import { W, H, VIEW_FLOOR } from './constants.js';
+import { sfx } from './sfx.js';
 
 export const fx = {
     shake: 0,        // 현재 흔들림 세기(px)
@@ -86,7 +87,7 @@ export function updateFx(dt) {
             const e = p * p;
             c.x = c.sx + (GOLD_TARGET.x - c.sx) * e;
             c.y = c.sy + (GOLD_TARGET.y - c.sy) * e - Math.sin(p * Math.PI) * 60;
-            if (p >= 1) { c.done = true; fx.goldBump = 1; }
+            if (p >= 1) { c.done = true; fx.goldBump = 1; sfx.coin(); }
         }
     }
     fx.coins = fx.coins.filter(c => !c.done);
