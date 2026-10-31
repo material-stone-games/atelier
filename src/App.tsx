@@ -230,7 +230,6 @@ function GameCard({ game, index, freeThisWeek }: { game: Game; index: number; fr
       <div className="game-card-art" style={game.coverUrl ? { backgroundImage: `url(${game.coverUrl})` } : undefined}>
         <span className="card-number">{String(index + 1).padStart(2, "0")}</span>
         <span className="access-pill">{freeThisWeek ? "FREE THIS WEEK" : accessLabel(game.accessLevel)}</span>
-        {!game.coverUrl ? <span className="abstract-glyph" aria-hidden="true">{game.title.slice(0, 1)}</span> : null}
         <span className="card-open" aria-hidden="true">↗</span>
       </div>
       <div className="game-card-copy"><div><h2>{game.title}</h2><p>{game.genres.join(" / ")}</p></div><span className="like-count">♡ {game.likeCount}</span></div>
@@ -309,6 +308,7 @@ function GamePage({ auth, games, onNotify }: { auth: AuthState; games: Game[]; o
   const [game, setGame] = useState<Game | null>(games.find((item) => item.id === gameId) ?? null);
   const [playUrl, setPlayUrl] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [playStatus, setPlayStatus] = useState<"idle" | "loading" | "stopped" | string>("idle");
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(game?.likeCount ?? 0);
   const [verifying, setVerifying] = useState(false);
@@ -326,12 +326,24 @@ function GamePage({ auth, games, onNotify }: { auth: AuthState; games: Game[]; o
     setLikeCount(game?.likeCount ?? 0);
   }, [game?.likeCount]);
 
+  const rotation = rotationForGames(games);
+  const permission = game ? accessPermission(game, auth, rotation) : { allowed: false as const };
+  const loadedGameId = game?.id;
+
+  // Open the build as soon as the visitor is known to have access; locked games stay on the black screen.
+  useEffect(() => {
+    setPlaying(false);
+    setPlayUrl(null);
+    setPlayStatus("idle");
+    if (loadedGameId && !auth.loading && permission.allowed) void startPlaying();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedGameId, auth.loading, permission.allowed]);
+
   if (!game) return <EmptyState title="Game not found" text="이 작업물은 아직 공개되지 않았거나 주소가 잘못되었습니다." />;
 
-  const rotation = rotationForGames(games);
-  const permission = accessPermission(game, auth, rotation);
   const freeThisWeek = game.accessLevel === "subscriber" && rotation.has(game.id);
   async function startPlaying() {
+    if (!game) return;
     if (!permission.allowed) {
       if (permission.reason === "login") return onNotify("이 게임은 Google 로그인 후 플레이할 수 있습니다.");
       if (permission.reason === "member") return onNotify("이 얼리 액세스 빌드는 채널 멤버십 회원에게만 열립니다.");
@@ -341,16 +353,19 @@ function GamePage({ auth, games, onNotify }: { auth: AuthState; games: Game[]; o
       const demoPlayPath = game?.demoPlayPath;
       setPlayUrl(demoPlayPath ? `${import.meta.env.BASE_URL}${demoPlayPath}` : null);
       setPlaying(true);
+      setPlayStatus("idle");
       if (!demoPlayPath) onNotify("Firebase 운영값을 연결하면 실제 웹빌드가 이곳에서 열립니다.");
       return;
     }
+    setPlayStatus("loading");
     try {
-      const session = await getPlaySession(gameId);
+      const session = await getPlaySession(game.id);
       if (!session.playUrl) throw new Error("플레이 세션을 만들지 못했습니다.");
       setPlayUrl(session.playUrl);
       setPlaying(true);
+      setPlayStatus("idle");
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : "게임을 열지 못했습니다.");
+      setPlayStatus(error instanceof Error ? error.message : "게임을 열지 못했습니다.");
     }
   }
 
@@ -370,13 +385,29 @@ function GamePage({ auth, games, onNotify }: { auth: AuthState; games: Game[]; o
   return (
     <div className="game-page page-container">
       <Link className="back-link" to="/hub">← Back to hub</Link>
-      <section className="game-detail-heading"><div className="game-detail-art" style={game.coverUrl ? { backgroundImage: `url(${game.coverUrl})` } : undefined}><span className="abstract-glyph">{game.title.slice(0, 1)}</span></div><div className="game-detail-copy"><p className="eyebrow">PROJECT / {game.buildStatus.toUpperCase()}</p><h1>{game.title}</h1><p className="game-detail-description">{game.description || "Material Stone Games의 플레이 가능한 작업물입니다. 지금의 빌드에서 다음 아이디어를 만나보세요."}</p><div className="tag-row">{game.genres.map((genre) => <span className="tag" key={genre}>{genre}</span>)}<span className={`tag access-tag ${game.accessLevel}`}>{accessLabel(game.accessLevel)}</span>{freeThisWeek ? <span className="tag access-tag public">FREE THIS WEEK</span> : null}</div><div className="detail-actions"><button className="button button-primary" type="button" onClick={startPlaying}>{playing ? "Restart build" : "Play build"} <span aria-hidden="true">→</span></button><button className={liked ? "button button-like active" : "button button-like"} type="button" onClick={async () => { if (!auth.user) return onNotify("좋아요를 누르려면 Google 로그인이 필요합니다."); try { const result = await toggleLike("game", game.id); setLiked(result.liked); setLikeCount(result.likeCount); } catch (error) { onNotify(error instanceof Error ? error.message : "좋아요 처리에 실패했습니다."); } }}>♡ {likeCount}</button></div></div></section>
+      <section className="game-detail-heading"><div className={game.coverUrl ? "game-detail-art has-cover" : "game-detail-art"} style={game.coverUrl ? { backgroundImage: `url(${game.coverUrl})` } : undefined} /><div className="game-detail-copy"><p className="eyebrow">PROJECT / {game.buildStatus.toUpperCase()}</p><h1>{game.title}</h1><p className="game-detail-description">{game.description || "Material Stone Games의 플레이 가능한 작업물입니다. 지금의 빌드에서 다음 아이디어를 만나보세요."}</p><div className="tag-row">{game.genres.map((genre) => <span className="tag" key={genre}>{genre}</span>)}<span className={`tag access-tag ${game.accessLevel}`}>{accessLabel(game.accessLevel)}</span>{freeThisWeek ? <span className="tag access-tag public">FREE THIS WEEK</span> : null}</div><div className="detail-actions"><button className="button button-primary" type="button" onClick={startPlaying}>{playing ? "Restart build" : "Play build"} <span aria-hidden="true">→</span></button><button className={liked ? "button button-like active" : "button button-like"} type="button" onClick={async () => { if (!auth.user) return onNotify("좋아요를 누르려면 Google 로그인이 필요합니다."); try { const result = await toggleLike("game", game.id); setLiked(result.liked); setLikeCount(result.likeCount); } catch (error) { onNotify(error instanceof Error ? error.message : "좋아요 처리에 실패했습니다."); } }}>♡ {likeCount}</button></div></div></section>
       {!permission.allowed && permission.reason === "member" ? <div className="verification-callout"><div><strong>Early access is for members.</strong><p>Material Stone 채널 멤버십 회원에게 먼저 열리는 빌드입니다. 멤버십 확인은 운영자가 처리합니다.</p></div><a href={getConfiguredYoutubeUrl()} target="_blank" rel="noreferrer">Open channel ↗</a></div> : null}
       {!permission.allowed && permission.reason === "subscriber" && auth.user ? <div className="verification-callout"><div><strong>Prototype room is locked.</strong><p>Material Stone YouTube 채널 구독을 확인하면 이 빌드가 열립니다.</p></div><button className="button button-quiet" type="button" onClick={verifySubscriber} disabled={verifying}>{verifying ? "Checking…" : "Verify subscription"}</button><a href={getConfiguredYoutubeUrl()} target="_blank" rel="noreferrer">Open channel ↗</a></div> : null}
-      {playing ? <PlaySurface playUrl={playUrl} playerRef={playerRef} onExit={() => setPlaying(false)} /> : <div className="play-placeholder"><div><span className="placeholder-kicker">READY WHEN YOU ARE</span><h2>Press play to enter<br /><em>{game.title}</em></h2><p>{permission.allowed ? "게임은 이 화면 안에서 바로 실행됩니다." : "접근 권한을 확인하면 플레이어가 열립니다."}</p></div><span className="placeholder-coordinates">ATELIER / {game.id.slice(0, 8).toUpperCase()}</span></div>}
+      {playing ? <PlaySurface playUrl={playUrl} playerRef={playerRef} onExit={() => { setPlaying(false); setPlayStatus("stopped"); }} /> : <PlayScreen message={playScreenMessage(auth, permission, playStatus)} locked={!auth.loading && !permission.allowed} />}
       <section className="comments-section"><div className="section-title-row"><div><p className="eyebrow">PLAYTEST NOTES</p><h2>Comments</h2></div><span className="comment-rule">01 / 01</span></div><CommentThread targetType="game" targetId={game.id} auth={auth} onNotify={onNotify} /></section>
     </div>
   );
+}
+
+function playScreenMessage(auth: AuthState, permission: ReturnType<typeof accessPermission>, status: string): string {
+  if (auth.loading) return "접근 권한을 확인하는 중입니다…";
+  if (!permission.allowed) {
+    if (permission.reason === "login") return "Google 로그인 후 플레이할 수 있는 게임입니다.";
+    if (permission.reason === "member") return "채널 멤버십 회원에게만 열리는 얼리 액세스 빌드입니다.";
+    return auth.user ? "YouTube 채널 구독을 확인하면 플레이할 수 있습니다." : "Google 로그인 후 YouTube 채널 구독을 확인하면 플레이할 수 있습니다.";
+  }
+  if (status === "loading" || status === "idle") return "게임을 불러오는 중입니다…";
+  if (status === "stopped") return "Play build를 누르면 다시 시작합니다.";
+  return status;
+}
+
+function PlayScreen({ message, locked }: { message: string; locked: boolean }) {
+  return <div className="play-screen" role="status">{locked ? <span className="play-screen-kicker">LOCKED</span> : null}<p>{message}</p></div>;
 }
 
 function PlaySurface({ playUrl, playerRef, onExit }: { playUrl: string | null; playerRef: React.RefObject<HTMLDivElement | null>; onExit: () => void }) {
