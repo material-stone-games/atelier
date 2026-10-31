@@ -131,9 +131,13 @@ h1 em, .hero h1 em, .page-heading h1 em, .game-detail-copy h1 em { color: var(--
 .verification-callout a { color: var(--orange); font-family: var(--mono); font-size: 9px; white-space: nowrap; }
 .play-surface { margin-top: 45px; background: #080a0c; border: 1px solid var(--line); }
 .play-surface-top { height: 42px; padding: 0 14px; display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-family: var(--mono); font-size: 8px; letter-spacing: .08em; }
-.play-surface-top button { border: 0; background: transparent; color: var(--cream); font-family: var(--mono); font-size: 9px; margin-left: 15px; }
+.play-surface-top button { border: 0; background: transparent; color: var(--cream); }
+.fullscreen-toggle { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; margin-right: -8px; }
 .play-surface-top button:hover { color: var(--orange); }
 .play-surface iframe { display: block; width: 100%; min-height: min(72vh, 800px); border: 0; background: #000; }
+/* In fullscreen the player fills the screen: the toolbar keeps its height and the build takes the rest. */
+.play-surface:fullscreen { display: flex; flex-direction: column; }
+.play-surface:fullscreen iframe, .play-surface:fullscreen .demo-frame { flex: 1; min-height: 0; height: auto; }
 .play-screen { min-height: min(72vh, 800px); margin-top: 45px; display: grid; place-content: center; justify-items: center; gap: 14px; padding: 24px; text-align: center; background: #000; border: 1px solid var(--line); }
 .play-screen p { margin: 0; color: var(--cream); font-size: 15px; }
 .play-screen-kicker { color: var(--orange); font-family: var(--mono); font-size: 10px; letter-spacing: .14em; }
