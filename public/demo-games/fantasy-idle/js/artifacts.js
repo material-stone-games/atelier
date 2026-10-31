@@ -1,6 +1,7 @@
 // 유물 효과 적용 시스템
 import { state } from './state.js';
 import { ARTIFACT_DEFS } from './artifact-data.js';
+import { STAGE_LEN } from './stages.js';
 
 // 보스 조우 시 모래시계 효과
 let hourglassActive = 0;
@@ -114,7 +115,9 @@ export function onBossEncounter(enemies) {
 export function onEnemyKill() {
     consecutiveKills++;
     if (state.artifacts.includes('tele_charm') && consecutiveKills % 3 === 0) {
-        state.distance += 100; // 100m 전방 스킵
+        // 전방 20m 이동 (보스 관문은 넘지 않음)
+        const end = (Math.floor(state.distance / STAGE_LEN) + 1) * STAGE_LEN;
+        state.distance = Math.min(state.distance + 20, end - 1);
     }
 }
 

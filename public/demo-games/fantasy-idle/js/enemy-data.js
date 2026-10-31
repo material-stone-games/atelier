@@ -1,4 +1,4 @@
-// 20종 적 데이터 정의 (존별: 일반5 엘리트2 중간보스1 보스1)
+// 적 데이터 정의 (지역별 등장 구성은 stages.js)
 export const ENEMY_DEFS = {
     // ── Zone 1: 초원/숲 ──────────────────────────────
     slime:      { name:'슬라임',     zone:1, rank:'normal',    hp:18,  atk:4,  def:0, spd:55,  drop:2,  color:'#60e060', w:18, h:14 },
@@ -31,37 +31,23 @@ export const ENEMY_DEFS = {
     ancient_dragon:{ name:'고대 용', zone:2, rank:'boss',      hp:900, atk:38, def:10, spd:50, drop:130,color:'#802010', w:64, h:48,
                   special:'poisonAura' }, // 광역 독 오라
 
-    // ── Zone 3: 어둠의 땅 (유니크 2종) ───────────────
-    lich:       { name:'리치',       zone:3, rank:'miniboss',  hp:450, atk:36, def:8, spd:65,  drop:60, color:'#8040c0', w:32, h:46,
+    // ── 설원 ─────────────────────────────────────────
+    yeti:       { name:'설인',       zone:5, rank:'normal',    hp:60,  atk:14, def:5, spd:55,  drop:6,  color:'#e8eef8', w:28, h:34 },
+    ice_spirit: { name:'얼음 정령',  zone:5, rank:'normal',    hp:40,  atk:12, def:3, spd:70,  drop:5,  color:'#a0e0ff', w:16, h:24 },
+    frost_wolf: { name:'서리 늑대',  zone:5, rank:'normal',    hp:45,  atk:15, def:2, spd:110, drop:5,  color:'#c8d8e8', w:30, h:20 },
+    ice_golem:  { name:'얼음 골렘',  zone:5, rank:'elite',     hp:120, atk:22, def:9, spd:40,  drop:16, color:'#80b0d8', w:30, h:36 },
+    ice_wraith: { name:'빙결 정령',  zone:5, rank:'miniboss',  hp:380, atk:30, def:8, spd:60,  drop:50, color:'#80d0ff', w:30, h:44,
+                  special:'aura' },       // 냉기 오라 초당 5
+    frost_giant:{ name:'서리 거인',  zone:5, rank:'boss',      hp:1100,atk:44, def:12,spd:40,  drop:160,color:'#9ab8d8', w:52, h:66,
+                  special:'stun' },       // 3초마다 광역 충격
+
+    // ── 어둠의 땅 ────────────────────────────────────
+    shadow_knight:{ name:'그림자 기사',zone:6, rank:'normal',  hp:80,  atk:18, def:8, spd:60,  drop:8,  color:'#504070', w:22, h:34 },
+    wraith:     { name:'망령',       zone:6, rank:'normal',    hp:55,  atk:16, def:2, spd:85,  drop:7,  color:'#8070b0', w:18, h:28, fly:true },
+    void_bat:   { name:'공허 박쥐',  zone:6, rank:'normal',    hp:40,  atk:15, def:1, spd:130, drop:6,  color:'#5a2a80', w:22, h:14, fly:true },
+    death_knight:{ name:'죽음의 기사',zone:6, rank:'elite',    hp:160, atk:28, def:12,spd:60,  drop:20, color:'#302050', w:26, h:40 },
+    lich:       { name:'리치',       zone:6, rank:'miniboss',  hp:450, atk:36, def:8, spd:65,  drop:60, color:'#8040c0', w:32, h:46,
                   special:'lifesteal' },  // 피격 시 HP 20% 회복
-    shadow_lord:{ name:'어둠의 군주',zone:3, rank:'boss',      hp:1500,atk:55, def:14,spd:60,  drop:200,color:'#401080', w:60, h:70,
+    shadow_lord:{ name:'어둠의 군주',zone:6, rank:'boss',      hp:1500,atk:55, def:14,spd:60,  drop:200,color:'#401080', w:60, h:70,
                   special:'amplify' },    // 모든 적중효과 확률 +50%
 };
-
-// 존별 적 목록 반환 (rank 필터)
-export function getZoneEnemies(zone) {
-    return Object.entries(ENEMY_DEFS)
-        .filter(([, d]) => d.zone === zone)
-        .reduce((o, [k, v]) => ({ ...o, [k]: v }), {});
-}
-
-// 존에서 랜덤 일반/엘리트 적 ID 선택
-export function pickEnemy(zone, rank) {
-    const pool = Object.entries(ENEMY_DEFS)
-        .filter(([, d]) => d.zone === zone && d.rank === rank)
-        .map(([k]) => k);
-    if (!pool.length) return null;
-    return pool[Math.floor(Math.random() * pool.length)];
-}
-
-// 보스 ID 반환
-export function getBossId(zone) {
-    const bosses = { 1: 'forest_giant', 2: 'ancient_dragon', 3: 'shadow_lord' };
-    return bosses[zone] ?? 'shadow_lord';
-}
-
-// 미니보스 ID 반환
-export function getMiniBossId(zone) {
-    const mini = { 1: 'troll', 2: 'fire_mage', 3: 'lich' };
-    return mini[zone] ?? 'lich';
-}

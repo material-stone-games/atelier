@@ -13,21 +13,23 @@ const ATK_HIT_AT = 0.55; // 모션 중 타격 시점
 export const DEATH_TIME = 0.55;
 
 export class Enemy {
-    constructor(id, x, scaleMult = 1) {
+    // mult: 능력치 배율 { hp, atk, def, drop } / opts: 보스로 키울 때 { rank, name, size }
+    constructor(id, x, mult = {}, opts = {}) {
         const def = ENEMY_DEFS[id];
+        const size = opts.size ?? 1;
         this.id   = _eid++;
         this.type = id;
         this.def  = def;
-        this.name = def.name;
-        this.rank = def.rank;
-        this.maxHp = Math.round(def.hp * scaleMult);
+        this.name = opts.name ?? def.name;
+        this.rank = opts.rank ?? def.rank;
+        this.maxHp = Math.round(def.hp * (mult.hp ?? 1));
         this.hp   = this.maxHp;
-        this.atk  = Math.round(def.atk * scaleMult);
-        this.def2 = Math.round(def.def * scaleMult);  // def 이름 충돌 방지
+        this.atk  = Math.round(def.atk * (mult.atk ?? 1));
+        this.def2 = Math.round(def.def * (mult.def ?? 1));  // def 이름 충돌 방지
         this.spd  = def.spd;
-        this.drop = Math.round(def.drop * scaleMult);
-        this.w    = def.w;
-        this.h    = def.h;
+        this.drop = Math.round(def.drop * (mult.drop ?? 1));
+        this.w    = Math.round(def.w * size);
+        this.h    = Math.round(def.h * size);
         this.fly  = !!def.fly;
         this.special = def.special ?? null;
         this.color = def.color;
@@ -77,7 +79,7 @@ export class Enemy {
         // 앞쪽 정지 위치까지 전진 (탐험 중에는 지면 스크롤도 함께)
         const spd = this.slowTimer > 0 ? this.spd * 0.5 : this.spd;
         if (this.slowTimer > 0) this.slowTimer -= dt;
-        const scroll = state.inCombat ? 0 : MOVE_SPEED * SCROLL_PX;
+        const scroll = state.scrolling ? MOVE_SPEED * SCROLL_PX : 0;
         this.moving = this.x > this.stopX + 0.5 && this.atkAnim === 0;
         if (this.moving) this.x = Math.max(this.stopX, this.x - (spd + scroll) * dt);
 

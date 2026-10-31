@@ -1,6 +1,7 @@
 // 화면 렌더링: TITLE, MAIN HUB, DEAD RESULT
 import { W, H, C } from './constants.js';
-import { state, upgradeCount, SAVE_KEY } from './state.js';
+import { state, savePersist, SAVE_KEY } from './state.js';
+import { REGIONS, regionIndex, stageLabel } from './stages.js';
 import { ARTIFACT_DEFS } from './artifact-data.js';
 import { renderUpgradeTreeEmbed, handleTreeClick } from './upgrade-tree.js';
 import { drawButton } from './ui.js';
@@ -70,11 +71,11 @@ export function renderTitle(ctx) {
 
     // 통계 (세이브 있을 때)
     const hasSave = !!localStorage.getItem(SAVE_KEY);
-    if (state.bestDist > 0) {
+    if (hasSave && (state.maxStage > 0 || state.totalKills > 0)) {
         ctx.fillStyle = '#7080a0';
         ctx.font = '11px monospace';
         ctx.fillText(
-            `최고 거리: ${state.bestDist}m  |  총 처치: ${state.totalKills}  |  사망: ${state.totalDeaths}`,
+            `최고 스테이지: ${stageLabel(state.maxStage)}  |  총 처치: ${state.totalKills}  |  사망: ${state.totalDeaths}`,
             W / 2, H / 2 - 20
         );
     }
@@ -174,21 +175,27 @@ export function renderMainHub(ctx, player) {
         ctx.fillText(`${def.icon} ${def.name}`, 14, 240 + i * 14);
     });
 
-    // 스킵 선택
-    const cnt = upgradeCount();
-    const skipOptions = _getSkipOptions(cnt);
+    // 출발 지역 선택 (도달한 지역까지)
+    state.startRegion = Math.min(state.startRegion, _maxStartRegion());
     ctx.fillStyle = '#0e0e24';
     ctx.fillRect(8, 326, 180, 78);
     ctx.strokeStyle = '#305030';
     ctx.strokeRect(8, 326, 180, 78);
     ctx.fillStyle = '#50a050';
     ctx.font = 'bold 11px monospace';
-    ctx.fillText('[ 시작 구역 ]', 14, 342);
-    skipOptions.forEach((opt, i) => {
-        const selected = state.skipZone === opt.zone;
-        _drawButton(ctx, 14, 348 + i * 26, 166, 22, opt.label,
-            selected ? C.green : '#507050', selected ? '#102010' : '#0a0a0a');
-    });
+    ctx.fillText('[ 출발 지역 ]', 14, 342);
+    const canPrev = state.startRegion > 0;
+    const canNext = state.startRegion < _maxStartRegion();
+    _drawButton(ctx, REGION_BTN.prev, REGION_BTN.y, REGION_BTN.size, REGION_BTN.size, '◀', canPrev ? C.green : '#304030', '#0a140a', { disabled: !canPrev });
+    _drawButton(ctx, REGION_BTN.next, REGION_BTN.y, REGION_BTN.size, REGION_BTN.size, '▶', canNext ? C.green : '#304030', '#0a140a', { disabled: !canNext });
+    ctx.fillStyle = C.text;
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`지역 ${state.startRegion + 1} · ${REGIONS[state.startRegion].name}`, 98, REGION_BTN.y + 17);
+    ctx.fillStyle = '#6a8a6a';
+    ctx.font = '10px monospace';
+    ctx.fillText(`최고 스테이지 ${stageLabel(state.maxStage)}`, 98, 396);
+    ctx.textAlign = 'left';
 
     // ── 우측 드래그 가능 트리 영역 (190~800) ─────────────
     // 반투명 배경 패널
@@ -254,10 +261,10 @@ export function renderDeadResult(ctx) {
     ctx.fillStyle = C.text;
     ctx.font = '14px monospace';
     const lines = [
-        `도달 거리: ${Math.floor(state.distance)} m`,
+        `도달 스테이지: ${stageLabel(state.stage)} (${REGIONS[regionIndex(state.stage)].name})`,
         `이번 획득 재화: ${state.sessionGold} G`,
         `적 처치: ${state.sessionKills} 마리`,
-        `최고 기록: ${state.bestDist} m`,
+        `최고 스테이지: ${stageLabel(state.maxStage)}`,
     ];
     lines.forEach((l, i) => ctx.fillText(l, W / 2, H / 2 - 40 + i * 24));
 
@@ -270,27 +277,19 @@ export function _drawButton(ctx, x, y, w, h, label, color, bg, opts = {}) {
     drawButton(ctx, x, y, w, h, label, color, bg, { pulse: color === C.gold, ...opts });
 }
 
-// 스킵 옵션 목록 반환
-function _getSkipOptions(cnt) {
-    const opts = [{ zone: 0, label: '존 1 (초원)' }];
-    if (cnt >= 5)  opts.push({ zone: 1, label: '존 2 (사막)' });
-    if (cnt >= 10) opts.push({ zone: 2, label: '존 3 (어둠)' });
-    return opts;
-}
+// 출발 지역 선택 버튼 위치
+const REGION_BTN = { prev: 14, next: 158, y: 352, size: 24 };
+const _maxStartRegion = () => regionIndex(state.maxStage);
+const _inBtn = (mx, my, x) => mx >= x && mx <= x + REGION_BTN.size && my >= REGION_BTN.y && my <= REGION_BTN.y + REGION_BTN.size;
 
 // HUB 클릭 처리
 export function handleHubClick(mx, my, _player, dragDist) {
     // 드래그로 이동한 경우 클릭 무시
     if (dragDist > 5) return null;
 
-    const cnt = upgradeCount();
-    const skipOptions = _getSkipOptions(cnt);
-    // 스킵 버튼
-    skipOptions.forEach((opt, i) => {
-        if (mx >= 14 && mx <= 180 && my >= 348 + i * 26 && my <= 370 + i * 26) {
-            state.skipZone = opt.zone;
-        }
-    });
+    // 출발 지역 변경
+    if (_inBtn(mx, my, REGION_BTN.prev) && state.startRegion > 0) { state.startRegion--; savePersist(); }
+    if (_inBtn(mx, my, REGION_BTN.next) && state.startRegion < _maxStartRegion()) { state.startRegion++; savePersist(); }
     // 게임 시작
     if (mx >= W - 148 && mx <= W - 8 && my >= 6 && my <= 38) return 'START';
     // 트리 패널 영역 클릭 → 업그레이드 구매
@@ -369,7 +368,7 @@ export function renderClearScreen(ctx) {
     ctx.fillStyle = C.text;
     ctx.font = '13px monospace';
     const lines = [
-        `도달 거리: ${Math.floor(state.distance)} m`,
+        `클리어 스테이지: ${stageLabel(state.stage)}`,
         `이번 획득 재화: ${state.sessionGold} G`,
         `적 처치: ${state.sessionKills} 마리`,
         `총 사망: ${state.totalDeaths} 회`,

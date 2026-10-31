@@ -1,60 +1,80 @@
 // 전투 시스템: 대열 배치, 자동 공격, 데미지 계산, 스폰, 파티클
-import { W, FLOOR_Y, MELEE_REACH, ENEMY_SPAWN_DIST, BOSS_INTERVAL, ENEMY_SPAWN_RATE, toScreen } from './constants.js';
+import { W, FLOOR_Y, MELEE_REACH, MOVE_SPEED, ENEMY_SPAWN_DIST, ENEMY_SPAWN_RATE, toScreen } from './constants.js';
 import { state, savePersist } from './state.js';
 import { Enemy, DEATH_TIME } from './enemy.js';
-import { pickEnemy, getBossId, getMiniBossId } from './enemy-data.js';
+import { REGIONS, STAGE_LEN, STAGES_PER_REGION, FINAL_STAGE, regionOf, regionIndex, stageLabel, stageBossKind, stageScale } from './stages.js';
 import { getStats } from './upgrade-data.js';
 import { applyOnHit } from './artifacts.js';
 import { STRIKE_AT } from './player.js';
-import { fx, addShake, addHitstop, spawnSlash, spawnRing, spawnCoins, spawnText } from './fx.js';
+import { fx, addShake, addHitstop, spawnSlash, spawnRing, spawnCoins, spawnText, showBanner } from './fx.js';
 import { sfx } from './sfx.js';
 
-// 현재 존 번호 (1~3)
-function currentZone() {
-    if (state.distance < 1000) return 1;
-    if (state.distance < 2000) return 2;
-    return 3;
+// 스테이지 끝의 보스 소환
+function spawnStageBoss(kind) {
+    const region = regionOf(state.stage);
+    const spec = region[kind];
+    const sc = stageScale(state.stage);
+    const big = kind === 'boss';
+    const hpX = (big ? 1.5 : 1.2) * (spec.hp ?? 1);
+    const boss = new Enemy(spec.id, W + 60, {
+        hp: sc.hp * hpX,
+        atk: sc.atk * (big ? 1.2 : 1.1) * (spec.atk ?? 1),
+        def: sc.def,
+        drop: sc.drop * hpX,
+    }, { rank: big ? 'boss' : 'miniboss', name: spec.name, size: spec.size });
+    state.enemies.push(boss);
+    state.bossActive = true;
+    state.stageBossSpawned = true;
+    addShake(6);
+    sfx.boss();
+    spawnText(W / 2, 120, big ? `☠ 보스 ${boss.name} 등장!` : `⚠ ${boss.name} 등장!`, big ? '#ff4040' : '#ffaa40', 20);
 }
 
-// 스케일 배수 (거리에 따른 적 강화)
-function scaleMult() {
-    return 1 + state.distance * 0.0003;
-}
-
-// 보스 스폰 여부 확인
-function trySpawnBoss() {
-    const milestone = Math.floor(state.distance / BOSS_INTERVAL);
-    if (milestone > 0 && state.prevBossDist < milestone && !state.bossActive) {
-        state.prevBossDist = milestone;
-        const zone = currentZone();
-        const isMini = milestone % 2 === 1;
-        const id = isMini ? getMiniBossId(zone) : getBossId(zone);
-        const boss = new Enemy(id, W + 60, scaleMult() * (isMini ? 1.2 : 1.5));
-        state.enemies.push(boss);
-        state.bossActive = true;
-        addShake(6);
-        sfx.boss();
-        spawnText(W / 2, 120, isMini ? `⚠ ${boss.name} 등장!` : `☠ 보스 ${boss.name} 등장!`, isMini ? '#ffaa40' : '#ff4040', 20);
+// 스테이지 진행: 전진, 보스 관문에서 대기, 스테이지 클리어
+export function updateProgress(player, dt) {
+    state.inCombat = state.enemies.some(e => inReach(player, e));
+    const end = (state.stage + 1) * STAGE_LEN;
+    const kind = stageBossKind(state.stage);
+    const gate = !!kind && !state.stageBossDone;
+    if (!state.inCombat) {
+        state.distance += MOVE_SPEED * dt;
+        if (gate && state.distance >= end) {
+            state.distance = end - 0.001;
+            if (!state.stageBossSpawned) spawnStageBoss(kind);
+        }
     }
+    state.holding = gate && state.distance >= end - 0.01;
+    state.scrolling = !state.inCombat && !state.holding;
+    if (state.distance >= end && state.stage < FINAL_STAGE) clearStage();
+}
+
+function clearStage() {
+    const label = stageLabel(state.stage);
+    state.stage++;
+    state.stageBossSpawned = false;
+    state.stageBossDone = false;
+    if (state.stage > state.maxStage) state.maxStage = state.stage;
+    savePersist();
+    const newRegion = state.stage % STAGES_PER_REGION === 0;
+    const r = regionIndex(state.stage);
+    showBanner(`STAGE ${label} CLEAR`,
+        newRegion ? `지역 ${r + 1} · ${REGIONS[r].name}` : `다음 스테이지 ${stageLabel(state.stage)}`,
+        newRegion ? '#80e0ff' : '#ffd84a');
+    sfx.stageClear();
 }
 
 // 일반/엘리트 적 스폰
 let spawnAccum = 0;
 export function updateSpawn(dt) {
-    // 전투 중이면 스폰 누적 정지
-    if (!state.inCombat) spawnAccum += dt * ENEMY_SPAWN_RATE;
+    // 전진 중일 때만 스폰 누적, 보스전 중에는 정지
+    if (state.scrolling) spawnAccum += dt * ENEMY_SPAWN_RATE;
     if (spawnAccum >= ENEMY_SPAWN_DIST && !state.bossActive) {
         spawnAccum = 0;
-        const zone = currentZone();
-        const r = Math.random();
-        const rank = r < 0.15 ? 'elite' : 'normal';
-        const id = pickEnemy(zone, rank);
-        if (id) {
-            const e = new Enemy(id, W + 40 + Math.random() * 80, scaleMult());
-            state.enemies.push(e);
-        }
+        const region = regionOf(state.stage);
+        const pool = Math.random() < 0.15 ? region.elites : region.normals;
+        const id = pool[Math.floor(Math.random() * pool.length)];
+        state.enemies.push(new Enemy(id, W + 40 + Math.random() * 80, stageScale(state.stage)));
     }
-    trySpawnBoss();
 }
 
 // 적을 지상/공중 줄로 나눠 플레이어 정면부터 차례로 세움 (겹침 방지)
@@ -138,6 +158,7 @@ export function updateCombat(player, dt) {
             if (big) {
                 fx.slowmo = 0.7;
                 state.bossActive = false;
+                state.stageBossDone = true;
                 tryDropArtifact(e.rank, stats);
                 if (e.type === 'shadow_lord') state.cleared = true;
             }

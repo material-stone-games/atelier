@@ -9,6 +9,9 @@ const ART = {
     skeleton: 'skeleton', skel_archer: 'skeleton',
     lava_golem: 'golem', fire_mage: 'caster', lich: 'caster',
     ancient_dragon: 'dragon', shadow_lord: 'lord',
+    yeti: 'brute', frost_giant: 'brute', ice_spirit: 'spirit', ice_wraith: 'spirit',
+    frost_wolf: 'wolf', ice_golem: 'golem',
+    shadow_knight: 'lord', death_knight: 'lord', wraith: 'spirit', void_bat: 'bat',
 };
 
 const BRUTE = {
@@ -18,13 +21,15 @@ const BRUTE = {
     orc_warrior:  { tusks: true, weapon: 'axe', helm: true },
     troll:        { tusks: true, weapon: 'club', hunch: true },
     forest_giant: { weapon: 'log', moss: true, hunch: true },
+    yeti:         { weapon: 'club', horns: true, hunch: true },
+    frost_giant:  { weapon: 'log', horns: true, hunch: true, helm: true },
 };
 
 // a: 공격 진행도(0~1), walk: 이동 중 여부
 export function drawEnemyArt(ctx, e, t, flash, a, walk) {
     const base = flash ? '#ffffff' : e.color;
     const kind = ART[e.type] ?? 'brute';
-    const fn = { slime, brute, bat, spirit, mushroom, scorpion, skeleton, golem, caster, dragon, lord }[kind];
+    const fn = { slime, brute, bat, spirit, mushroom, scorpion, skeleton, golem, caster, dragon, lord, wolf }[kind];
     fn(ctx, e, t, base, a, walk);
 }
 
@@ -129,6 +134,17 @@ function brute(ctx, e, t, c, a, walk) {
         ctx.fillStyle = '#f4ecd0';
         ctx.beginPath(); ctx.moveTo(hx - hr * 0.7, hy + hr * 0.45); ctx.lineTo(hx - hr * 0.6, hy + hr * 0.05); ctx.lineTo(hx - hr * 0.45, hy + hr * 0.45); ctx.fill();
     }
+    if (o.horns) {
+        ctx.fillStyle = flashSafe(c, '#f0ead8');
+        for (const s of [-1, 1]) {
+            ctx.beginPath();
+            ctx.moveTo(hx + s * hr * 0.35, hy - hr * 0.7);
+            ctx.quadraticCurveTo(hx + s * hr * 1.2, hy - hr * 1.3, hx + s * hr * 0.9, hy - hr * 1.8);
+            ctx.lineTo(hx + s * hr * 0.6, hy - hr * 0.8);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
     if (o.helm) {
         ctx.beginPath(); ctx.arc(hx, hy, hr * 1.05, Math.PI * 1.05, Math.PI * 1.95);
         ctx.lineTo(hx + hr, hy - hr * 0.1); ctx.lineTo(hx - hr, hy - hr * 0.1); ctx.closePath();
@@ -220,11 +236,21 @@ function spirit(ctx, e, t, c) {
     g.addColorStop(0, '#ffffff'); g.addColorStop(0.4, shade(c, 0.3)); g.addColorStop(1, shade(c, -0.2));
     ctx.fillStyle = g; ctx.fill();
     ctx.restore();
-    // 잎사귀 머리장식
-    ctx.fillStyle = flashSafe(c, '#2e9a50');
-    ctx.beginPath(); ctx.ellipse(w * 0.1, -h * 1.02, w * 0.3, 2.5, -0.4, 0, Math.PI * 2); ctx.fill();
-    eye(ctx, -w * 0.25, -h * 0.68, 1.8, '#1a3a2a');
-    eye(ctx, w * 0.02, -h * 0.68, 1.8, '#1a3a2a');
+    // 머리장식: 숲 정령은 잎사귀, 얼음 계열은 결정, 망령은 없음
+    if (e.type === 'spirit') {
+        ctx.fillStyle = flashSafe(c, '#2e9a50');
+        ctx.beginPath(); ctx.ellipse(w * 0.1, -h * 1.02, w * 0.3, 2.5, -0.4, 0, Math.PI * 2); ctx.fill();
+    } else if (e.type !== 'wraith') {
+        ctx.fillStyle = flashSafe(c, '#e8fbff');
+        for (const [dx, hgt] of [[-0.2, 0.25], [0.05, 0.38], [0.28, 0.22]]) {
+            ctx.beginPath();
+            ctx.moveTo(w * dx - 3, -h * 0.98); ctx.lineTo(w * dx, -h * (0.98 + hgt)); ctx.lineTo(w * dx + 3, -h * 0.98);
+            ctx.fill();
+        }
+    }
+    const eyeCol = e.type === 'wraith' ? '#ff4060' : e.type === 'spirit' ? '#1a3a2a' : '#1a3050';
+    eye(ctx, -w * 0.25, -h * 0.68, Math.max(1.8, w * 0.1), eyeCol);
+    eye(ctx, w * 0.02, -h * 0.68, Math.max(1.8, w * 0.1), eyeCol);
 }
 
 function mushroom(ctx, e, t, c, a, walk) {
@@ -339,7 +365,7 @@ function golem(ctx, e, t, c, a, walk) {
     const w = e.w, h = e.h;
     const ph = t * 6;
     const sway = walk ? Math.sin(ph) * 2 : 0;
-    const glow = flashSafe(c, '#ffb020');
+    const glow = flashSafe(c, e.type === 'ice_golem' ? '#c8f6ff' : '#ffb020');
     const block = (x, y, bw, bh) => {
         roundRect(ctx, x, y, bw, bh, 3);
         outlined(ctx, shade(c, -0.25));
@@ -490,5 +516,50 @@ function lord(ctx, e, t, c, a) {
     ctx.shadowColor = '#a040ff'; ctx.shadowBlur = 8;
     outlined(ctx, flashSafe(c, '#3a2060'), '#c080ff', 1);
     ctx.shadowBlur = 0;
+    ctx.restore();
+}
+
+function wolf(ctx, e, t, c, a, walk) {
+    const w = e.w, h = e.h;
+    const ph = t * 14;
+    const gait = walk ? Math.sin(ph) : 0;
+    const r = armRaise(a);
+    const dark = shade(c, -0.35);
+    // 다리 4개 (대각선끼리 같이 움직임)
+    for (const [lx, s] of [[-w * 0.3, gait], [-w * 0.15, -gait], [w * 0.2, -gait], [w * 0.35, gait]]) {
+        roundRect(ctx, lx + s * 3 - 2, -h * 0.5, 4, h * 0.5, 2);
+        outlined(ctx, dark);
+    }
+    // 꼬리
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(w * 0.4, -h * 0.75);
+    ctx.quadraticCurveTo(w * 0.65, -h * (0.9 + Math.sin(t * 6) * 0.15), w * 0.6, -h * 1.15);
+    ctx.stroke();
+    // 몸통
+    ctx.beginPath(); ctx.ellipse(0, -h * 0.68, w * 0.45, h * 0.32, 0, 0, Math.PI * 2);
+    const g = ctx.createLinearGradient(0, -h, 0, -h * 0.35);
+    g.addColorStop(0, shade(c, 0.2)); g.addColorStop(1, shade(c, -0.2));
+    outlined(ctx, g);
+    // 머리 (공격 시 앞으로 물어뜯음)
+    ctx.save();
+    ctx.translate(-w * 0.42 - r * w * 0.15, -h * 0.95 + r * h * 0.15);
+    ctx.beginPath(); ctx.ellipse(0, 0, w * 0.2, h * 0.28, 0, 0, Math.PI * 2);
+    outlined(ctx, c);
+    // 주둥이
+    ctx.beginPath(); ctx.ellipse(-w * 0.18, h * 0.08, w * 0.14, h * 0.13, 0, 0, Math.PI * 2);
+    outlined(ctx, shade(c, 0.15));
+    ctx.fillStyle = '#202830';
+    ctx.beginPath(); ctx.arc(-w * 0.3, h * 0.03, 1.6, 0, Math.PI * 2); ctx.fill();
+    // 귀
+    ctx.beginPath(); ctx.moveTo(0, -h * 0.2); ctx.lineTo(w * 0.06, -h * 0.55); ctx.lineTo(w * 0.13, -h * 0.15); ctx.closePath();
+    outlined(ctx, dark);
+    eye(ctx, -w * 0.08, -h * 0.05, 1.8, '#60d0ff');
+    if (a > 0.45 && a < 0.7) {
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.moveTo(-w * 0.28, h * 0.14); ctx.lineTo(-w * 0.25, h * 0.24); ctx.lineTo(-w * 0.22, h * 0.14); ctx.fill();
+    }
     ctx.restore();
 }

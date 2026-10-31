@@ -15,11 +15,12 @@ export const fx = {
     projectiles: [],
     texts: [],       // 팝업 텍스트(+G, 상태 표시 등)
     ui: [],          // 화면 전환과 무관한 UI 파티클
+    banner: null,    // 스테이지 배너 { title, sub, color, life }
 };
 
 export function resetFx() {
     fx.shake = 0; fx.hitstop = 0; fx.slowmo = 0; fx.hurtFlash = 0;
-    fx.slashes = []; fx.rings = []; fx.coins = []; fx.projectiles = []; fx.texts = [];
+    fx.slashes = []; fx.rings = []; fx.coins = []; fx.projectiles = []; fx.texts = []; fx.banner = null;
 }
 
 export function addShake(amount) { fx.shake = Math.min(14, Math.max(fx.shake, amount)); }
@@ -54,6 +55,11 @@ export function spawnProjectile(x, y, tx, ty, color, speed, onHit) {
     fx.projectiles.push({ x, y, vx: dx / d * speed, vy: dy / d * speed, life: d / speed, color, onHit });
 }
 
+const BANNER_TIME = 2.4;
+export function showBanner(title, sub, color = '#ffd84a') {
+    fx.banner = { title, sub, color, life: BANNER_TIME };
+}
+
 export function spawnUiBurst(x, y, color) {
     for (let i = 0; i < 10; i++) {
         const a = (Math.PI * 2 * i) / 10 + Math.random() * 0.3;
@@ -70,6 +76,7 @@ export function updateFx(dt) {
     fx.shake = Math.max(0, fx.shake - dt * 30);
     fx.hurtFlash = Math.max(0, fx.hurtFlash - dt * 2.5);
     fx.goldBump = Math.max(0, fx.goldBump - dt * 4);
+    if (fx.banner && (fx.banner.life -= dt) <= 0) fx.banner = null;
 
     for (const s of fx.slashes) s.life -= dt;
     fx.slashes = fx.slashes.filter(s => s.life > 0);
@@ -186,6 +193,8 @@ export function renderScreenFx(ctx) {
     ctx.globalAlpha = 1;
     ctx.textAlign = 'left';
 
+    if (fx.banner) _renderBanner(ctx, fx.banner);
+
     if (fx.hurtFlash > 0) {
         const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.7);
         g.addColorStop(0, 'rgba(255,0,0,0)');
@@ -193,6 +202,43 @@ export function renderScreenFx(ctx) {
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, W, H);
     }
+}
+
+// 화면 가운데 띠 배너: 양옆에서 펼쳐졌다가 접힘
+function _renderBanner(ctx, b) {
+    const p = 1 - b.life / BANNER_TIME;
+    const open = Math.min(1, p / 0.12, b.life / 0.3);
+    const y = 150;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, open);
+    const bw = W * open;
+    const g = ctx.createLinearGradient(W / 2 - bw / 2, 0, W / 2 + bw / 2, 0);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(0.2, 'rgba(8,8,24,0.85)');
+    g.addColorStop(0.8, 'rgba(8,8,24,0.85)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(W / 2 - bw / 2, y - 34, bw, 62);
+    ctx.fillStyle = b.color;
+    ctx.fillRect(W / 2 - bw * 0.35, y - 34, bw * 0.7, 2);
+    ctx.fillRect(W / 2 - bw * 0.35, y + 26, bw * 0.7, 2);
+    const pop = p < 0.1 ? 0.6 + (p / 0.1) * 0.5 : 1.1 - Math.min(0.1, (p - 0.1) * 0.5);
+    ctx.translate(W / 2, y);
+    ctx.scale(pop, pop);
+    ctx.textAlign = 'center';
+    ctx.lineJoin = 'round';
+    ctx.font = 'bold 26px monospace';
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.strokeText(b.title, 0, 0);
+    ctx.fillStyle = b.color;
+    ctx.fillText(b.title, 0, 0);
+    ctx.font = 'bold 13px monospace';
+    ctx.lineWidth = 4;
+    ctx.strokeText(b.sub, 0, 20);
+    ctx.fillStyle = '#e8e8f0';
+    ctx.fillText(b.sub, 0, 20);
+    ctx.restore();
 }
 
 export function renderUiFx(ctx) {

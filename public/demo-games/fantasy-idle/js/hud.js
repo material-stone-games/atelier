@@ -2,7 +2,7 @@
 import { W, H, C, VIEW_X } from './constants.js';
 import { state } from './state.js';
 import { ARTIFACT_DEFS } from './artifact-data.js';
-import { getBiome } from './world.js';
+import { STAGE_LEN, regionOf, stageLabel, stageBossKind } from './stages.js';
 import { fx } from './fx.js';
 
 let hpTrail = 1;      // 피해 잔상 비율
@@ -77,14 +77,7 @@ export function renderHUD(ctx, player) {
         ctx.textAlign = 'left';
     }
 
-    // 거리 / 바이옴
-    const biome = getBiome(state.distance);
-    ctx.fillStyle = '#a0a8c0';
-    ctx.font = '11px monospace';
-    ctx.fillText(`📍 ${Math.floor(state.distance)}m`, W / 2 - 40, 20);
-    ctx.fillStyle = '#8090a8';
-    ctx.font = '10px monospace';
-    ctx.fillText(biome.name, W / 2 - 25, 35);
+    _renderStage(ctx);
 
     // 처치 수
     ctx.fillStyle = '#c0a0a0';
@@ -93,6 +86,32 @@ export function renderHUD(ctx, player) {
 
     // 유물 아이콘 (하단 좌측)
     _renderArtifacts(ctx);
+}
+
+// 스테이지 표시 + 다음 관문까지 진행 바
+function _renderStage(ctx) {
+    const cx = W / 2 + 40;
+    const kind = stageBossKind(state.stage);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#e8e8f0';
+    ctx.font = 'bold 13px monospace';
+    ctx.fillText(`STAGE ${stageLabel(state.stage)}  ${regionOf(state.stage).name}`, cx, 19);
+
+    const bw = 170, bx = cx - bw / 2, by = 27;
+    const p = Math.min(1, Math.max(0, state.distance / STAGE_LEN - state.stage));
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, 7, 3); ctx.fill();
+    const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+    g.addColorStop(0, '#4080e8'); g.addColorStop(1, kind ? '#e84040' : '#40c8c8');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.roundRect(bx, by, Math.max(3, bw * p), 7, 3); ctx.fill();
+    // 끝 표시: 보스 관문이면 해골, 아니면 깃발
+    ctx.font = '12px "Segoe UI Emoji","Apple Color Emoji",sans-serif';
+    ctx.fillText(kind === 'boss' ? '☠️' : kind === 'mini' ? '💀' : '🚩', bx + bw + 10, by + 8);
+    ctx.fillStyle = '#8090a8';
+    ctx.font = '9px monospace';
+    ctx.fillText(state.holding ? '보스와 대결 중!' : `${Math.floor(state.distance)} m`, cx, by + 18);
+    ctx.textAlign = 'left';
 }
 
 function _renderArtifacts(ctx) {

@@ -164,6 +164,11 @@ export const sfx = {
         tone({ type: 'square', freq: 150, dur: 0.07, vol: 0.14 });
         tone({ type: 'square', freq: 120, dur: 0.1, vol: 0.14, delay: 0.09 });
     }),
+    stageClear: () => play('stageClear', 500, () => {
+        [523, 659, 784].forEach((f, i) => tone({ type: 'square', freq: f, dur: 0.12, vol: 0.1, delay: i * 0.09 }));
+        tone({ type: 'square', freq: 1047, dur: 0.35, vol: 0.12, delay: 0.27 });
+        tone({ type: 'triangle', freq: 523, dur: 0.5, vol: 0.12, delay: 0.27 });
+    }),
     start: () => play('start', 300, () => {
         [392, 523, 659, 784].forEach((f, i) => tone({ type: 'triangle', freq: f, dur: 0.18, vol: 0.14, delay: i * 0.07 }));
     }),

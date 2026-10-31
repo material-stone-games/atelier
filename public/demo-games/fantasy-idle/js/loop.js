@@ -1,9 +1,10 @@
 // 메인 게임 루프: 상태 전환, 업데이트, 렌더링, 입력
-import { W, H, FLOOR_Y, MOVE_SPEED, applyCamera, toScreen } from './constants.js';
+import { W, H, FLOOR_Y, applyCamera, toScreen } from './constants.js';
 import { state, loadSave, savePersist, resetRun, newGame } from './state.js';
 import { Player } from './player.js';
 import { renderSky, renderWorld, renderWeather, updateWorldTime } from './world.js';
-import { updateSpawn, updateCombat, updateEffects, renderEffects, arrangeEnemies, spawnParticle, resetCombat, inReach } from './combat.js';
+import { updateSpawn, updateCombat, updateEffects, renderEffects, arrangeEnemies, spawnParticle, resetCombat, updateProgress } from './combat.js';
+import { REGIONS, STAGE_LEN, STAGES_PER_REGION, stageLabel } from './stages.js';
 import { updateArtifacts, onBossEncounter } from './artifacts.js';
 import { renderHUD, renderBossHUD } from './hud.js';
 import {
@@ -19,7 +20,7 @@ import {
     TREE_PANEL, TREE_BASE_CX, TREE_BASE_CY, ZOOM_MIN, ZOOM_MAX,
 } from './screens.js';
 import { getRandomArtifact } from './artifact-data.js';
-import { fx, resetFx, updateFx, renderWorldFx, renderScreenFx, renderUiFx, addShake, addHitstop } from './fx.js';
+import { fx, resetFx, updateFx, renderWorldFx, renderScreenFx, renderUiFx, addShake, addHitstop, showBanner } from './fx.js';
 import { pointer, ui, beginUiFrame, buttonClickFeedback } from './ui.js';
 import { sfx, unlockAudio, toggleMute, isMuted } from './sfx.js';
 
@@ -73,9 +74,10 @@ function initRun() {
     resetFx();
     resetCombat();
     player = new Player();
-    const skipDist = [0, 1000, 2000];
-    state.distance = skipDist[state.skipZone] ?? 0;
-    state.prevBossDist = Math.floor(state.distance / 1000);
+    // 선택한 지역의 첫 스테이지에서 출발
+    state.stage = state.startRegion * STAGES_PER_REGION;
+    state.distance = state.stage * STAGE_LEN;
+    showBanner(`지역 ${state.startRegion + 1} · ${REGIONS[state.startRegion].name}`, `STAGE ${stageLabel(state.stage)}`, '#80e0ff');
 }
 
 // ── 사망 트리거 ───────────────────────────────────────
@@ -84,7 +86,6 @@ function triggerDeath() {
     deathAnimTimer = DEATH_SEQ;
     state.screen = 'DYING';
     state.totalDeaths++;
-    if (state.distance > state.bestDist) state.bestDist = Math.floor(state.distance);
     addShake(12);
     addHitstop(0.25);
     fx.hurtFlash = 1;
@@ -133,10 +134,9 @@ function update(realDt) {
     updateWorldTime(dt);
 
     if (state.screen === 'PLAYING') {
-        // 적이 검 사거리 안에 들어오는 순간 전진 정지 → 바로 공격
-        state.inCombat = state.enemies.some(e => inReach(player, e));
-        if (!state.inCombat) state.distance += MOVE_SPEED * dt;
-        player.walking = !state.inCombat;
+        // 전진 → 적이 검 사거리에 들어오면 정지 후 공격, 보스 관문에서는 대기
+        updateProgress(player, dt);
+        player.walking = state.scrolling;
 
         // 걷는 발밑 먼지
         if (player.walking) {
