@@ -16,8 +16,16 @@ export const appConfig = {
   functionsBaseUrl: (env.VITE_FUNCTIONS_BASE_URL as string | undefined)?.replace(/\/$/, ""),
   youtubeChannelId: (env.VITE_YOUTUBE_CHANNEL_ID as string | undefined)?.trim(),
   youtubeUrl: (env.VITE_YOUTUBE_URL as string | undefined) ?? "https://www.youtube.com/@materialstone",
-  discordUrl: (env.VITE_DISCORD_URL as string | undefined) ?? "https://discord.gg/",
+  discordUrl: inviteUrlOrNull(env.VITE_DISCORD_URL as string | undefined),
+  appCheckSiteKey: (env.VITE_APPCHECK_SITE_KEY as string | undefined)?.trim() || undefined,
 };
+
+// A bare "https://discord.gg/" is the placeholder, not an invite, so the link stays hidden.
+function inviteUrlOrNull(value: string | undefined): string | null {
+  const url = value?.trim();
+  if (!url || /^https?:\/\/discord\.gg\/?$/i.test(url)) return null;
+  return url;
+}
 
 export const hasFirebaseConfig = Boolean(
   appConfig.firebase.apiKey &&

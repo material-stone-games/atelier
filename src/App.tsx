@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { AccessLevel, AuthState, Comment, Game, Post, TargetType } from "./types";
 import { AdminTools } from "./AdminTools";
+import { PrivacyPage } from "./PrivacyPage";
 import { accessLabel, accessPermission, rotationForGames } from "./lib/access";
 import { APP_BASE_PATH } from "./lib/config";
 import {
@@ -36,6 +37,8 @@ import {
   validateImage,
   validatePostText,
 } from "./lib/validation";
+
+const discordUrl = getConfiguredDiscordUrl();
 
 const initialAuth: AuthState = {
   user: null,
@@ -85,6 +88,7 @@ function AppShell({ auth, games, posts }: { auth: AuthState; games: Game[]; post
           <Route path="/hub/community" element={<CommunityPage auth={auth} posts={posts} onNotify={notify} />} />
           <Route path="/hub/game/:gameId" element={<GamePage auth={auth} games={games} onNotify={notify} />} />
           <Route path="/hub/admin" element={<AdminPage auth={auth} games={games} onNotify={notify} />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
@@ -133,7 +137,7 @@ function Header({ auth, onNotify }: { auth: AuthState; onNotify: (message: strin
         </nav>
         <div className={`header-actions ${menuOpen ? "is-open" : ""}`}>
           <a href={getConfiguredYoutubeUrl()} target="_blank" rel="noreferrer">YouTube <span aria-hidden="true">↗</span></a>
-          <a href={getConfiguredDiscordUrl()} target="_blank" rel="noreferrer">Discord <span aria-hidden="true">↗</span></a>
+          {discordUrl ? <a href={discordUrl} target="_blank" rel="noreferrer">Discord <span aria-hidden="true">↗</span></a> : null}
           {auth.isAdmin ? <button className="admin-link" type="button" onClick={() => navigate("/hub/admin")}>Admin</button> : null}
           <button className="auth-button" type="button" onClick={handleAuth}>
             {auth.user ? <><span className="avatar-dot">{getDisplayName(auth.user).slice(0, 1).toUpperCase()}</span> Sign out</> : "Sign in with Google"}
@@ -154,7 +158,9 @@ function HomePage() {
           <p className="hero-lede">Atelier는 Material Stone Games가 만드는 게임과 작은 실험들을 모아두는 작업실입니다. 완성된 게임부터 아직 흔들리는 프로토타입까지, 지금 여기서 만나보세요.</p>
           <div className="hero-actions">
             <Link className="button button-primary" to="/hub">Explore the hub <span aria-hidden="true">→</span></Link>
-            <a className="button button-quiet" href={getConfiguredDiscordUrl()} target="_blank" rel="noreferrer">Join the community</a>
+            {discordUrl
+              ? <a className="button button-quiet" href={discordUrl} target="_blank" rel="noreferrer">Join the community</a>
+              : <Link className="button button-quiet" to="/hub/community">Join the community</Link>}
           </div>
           <div className="hero-meta"><span className="live-dot" /> Open studio <span className="meta-divider" /> Seoul / worldwide</div>
         </div>
@@ -469,6 +475,6 @@ function AdminPage({ auth, games, onNotify }: { auth: AuthState; games: Game[]; 
 function PermissionPanel({ title, text }: { title: string; text: string }) { return <div className="center-state page-container"><span className="state-symbol">✳</span><h1>{title}</h1><p>{text}</p><Link className="button button-primary" to="/hub">Return to hub</Link></div>; }
 function EmptyState({ title, text }: { title: string; text: string }) { return <div className="center-state page-container"><span className="state-symbol">○</span><h1>{title}</h1><p>{text}</p><Link className="button button-primary" to="/hub">Return to hub</Link></div>; }
 function LoadingState() { return <div className="center-state page-container"><span className="spinner-large" /><p>Loading Atelier…</p></div>; }
-function Footer() { return <footer className="site-footer"><div><span className="footer-mark">ATELIER / 2026</span><p>A small workshop by Material Stone Games.</p></div><div><a href={getConfiguredYoutubeUrl()} target="_blank" rel="noreferrer">YouTube ↗</a><a href={getConfiguredDiscordUrl()} target="_blank" rel="noreferrer">Discord ↗</a></div></footer>; }
+function Footer() { return <footer className="site-footer"><div><span className="footer-mark">ATELIER / 2026</span><p>A small workshop by Material Stone Games.</p></div><div><a href={getConfiguredYoutubeUrl()} target="_blank" rel="noreferrer">YouTube ↗</a>{discordUrl ? <a href={discordUrl} target="_blank" rel="noreferrer">Discord ↗</a> : null}<Link to="/privacy">개인정보처리방침</Link></div></footer>; }
 
 function formatDate(value: Game["createdAt"] | Post["createdAt"] | Comment["createdAt"]): string { if (!value) return "recently"; const date = value instanceof Date ? value : value.toDate(); return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric" }).format(date); }

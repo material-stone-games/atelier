@@ -379,6 +379,6 @@ export function getConfiguredYoutubeUrl(): string {
   return appConfig.youtubeUrl;
 }
 
-export function getConfiguredDiscordUrl(): string {
+export function getConfiguredDiscordUrl(): string | null {
   return appConfig.discordUrl;
 }

@@ -102,7 +102,7 @@ function readGameMeta(data: Record<string, unknown>) {
   return { title, titleKey: normalizeTitle(title), description, genres, accessLevel };
 }
 
-export const verifyYoutubeSubscription = onCall({ region: "asia-northeast3", maxInstances: 2 }, async (request) => {
+export const verifyYoutubeSubscription = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 2 }, async (request) => {
   const auth = requireUser(request);
   const accessToken = typeof request.data?.youtubeAccessToken === "string" ? request.data.youtubeAccessToken : "";
   const channelId = YOUTUBE_CHANNEL_ID.value();
@@ -122,7 +122,7 @@ export const verifyYoutubeSubscription = onCall({ region: "asia-northeast3", max
   return { verifiedUntil: verifiedUntil.toDate().toISOString() };
 });
 
-export const createOrUpdateGameDraft = onCall({ region: "asia-northeast3", maxInstances: 2 }, async (request) => {
+export const createOrUpdateGameDraft = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 2 }, async (request) => {
   const auth = requireAdmin(request);
   const data = (request.data ?? {}) as Record<string, unknown>;
   const meta = readGameMeta(data);
@@ -163,7 +163,7 @@ export const createOrUpdateGameDraft = onCall({ region: "asia-northeast3", maxIn
   return { gameId, buildPath, coverPath };
 });
 
-export const createPost = onCall({ region: "asia-northeast3", maxInstances: 3 }, async (request) => {
+export const createPost = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 3 }, async (request) => {
   const auth = requireUser(request);
   const text = typeof request.data?.text === "string" ? request.data.text.trim() : "";
   const hasImage = request.data?.hasImage === true;
@@ -184,7 +184,7 @@ export const createPost = onCall({ region: "asia-northeast3", maxInstances: 3 },
   return { postId, imagePath: hasImage ? `board-images/${postId}/image` : undefined };
 });
 
-export const createComment = onCall({ region: "asia-northeast3", maxInstances: 3 }, async (request) => {
+export const createComment = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 3 }, async (request) => {
   const auth = requireUser(request);
   const targetType: TargetType = request.data?.targetType === "game" ? "game" : "post";
   const targetId = typeof request.data?.targetId === "string" ? request.data.targetId : "";
@@ -207,7 +207,7 @@ export const createComment = onCall({ region: "asia-northeast3", maxInstances: 3
   return { commentId: commentRef.id };
 });
 
-export const toggleLike = onCall({ region: "asia-northeast3", maxInstances: 3 }, async (request) => {
+export const toggleLike = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 3 }, async (request) => {
   const auth = requireUser(request);
   const targetType: TargetType = request.data?.targetType === "game" ? "game" : "post";
   const targetId = typeof request.data?.targetId === "string" ? request.data.targetId : "";
@@ -230,7 +230,7 @@ export const toggleLike = onCall({ region: "asia-northeast3", maxInstances: 3 },
   return result;
 });
 
-export const getPlaySession = onCall({ region: "asia-northeast3", maxInstances: 3, secrets: [PLAY_SESSION_SECRET] }, async (request) => {
+export const getPlaySession = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 3, secrets: [PLAY_SESSION_SECRET] }, async (request) => {
   const gameId = typeof request.data?.gameId === "string" ? request.data.gameId : "";
   if (!gameId) throw new HttpsError("invalid-argument", "게임을 확인해 주세요.");
   const game = await db.doc(`games/${gameId}`).get();
@@ -361,7 +361,7 @@ export const processBuildZip = onObjectFinalized({ region: "asia-northeast3", me
   }
 });
 
-export const updateGameMeta = onCall({ region: "asia-northeast3", maxInstances: 2 }, async (request) => {
+export const updateGameMeta = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 2 }, async (request) => {
   requireAdmin(request);
   const data = (request.data ?? {}) as Record<string, unknown>;
   const gameId = typeof data.gameId === "string" ? data.gameId : "";
@@ -382,7 +382,7 @@ async function deleteDocs(snapshot: QuerySnapshot<DocumentData>): Promise<void> 
   }
 }
 
-export const deleteGame = onCall({ region: "asia-northeast3", maxInstances: 1, timeoutSeconds: 300 }, async (request) => {
+export const deleteGame = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 1, timeoutSeconds: 300 }, async (request) => {
   requireAdmin(request);
   const gameId = typeof request.data?.gameId === "string" ? request.data.gameId : "";
   const gameRef = db.doc(`games/${gameId}`);
@@ -428,12 +428,12 @@ async function buildStorageReport() {
   return { totalBytes, fileCount: files.length, byPrefix, orphanedPaths, gamesWithoutBuild };
 }
 
-export const storageReport = onCall({ region: "asia-northeast3", maxInstances: 1, timeoutSeconds: 120 }, async (request) => {
+export const storageReport = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 1, timeoutSeconds: 120 }, async (request) => {
   requireAdmin(request);
   return buildStorageReport();
 });
 
-export const deleteStorageOrphans = onCall({ region: "asia-northeast3", maxInstances: 1, timeoutSeconds: 300 }, async (request) => {
+export const deleteStorageOrphans = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 1, timeoutSeconds: 300 }, async (request) => {
   requireAdmin(request);
   const requested: unknown[] = Array.isArray(request.data?.paths) ? request.data.paths : [];
   // Only delete paths that are still orphaned when the request arrives.

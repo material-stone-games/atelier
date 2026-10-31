@@ -42,6 +42,7 @@ jobs:
           VITE_YOUTUBE_CHANNEL_ID: ${{ vars.VITE_YOUTUBE_CHANNEL_ID }}
           VITE_YOUTUBE_URL: ${{ vars.VITE_YOUTUBE_URL }}
           VITE_DISCORD_URL: ${{ vars.VITE_DISCORD_URL }}
+          VITE_APPCHECK_SITE_KEY: ${{ vars.VITE_APPCHECK_SITE_KEY }}
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
