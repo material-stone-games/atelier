@@ -376,7 +376,8 @@ GitHub 저장소의 Settings > Secrets and variables > Actions > **Variables** >
 | `VITE_FUNCTIONS_BASE_URL` | Functions base URL, `/playGateway` 제외 |
 | `VITE_YOUTUBE_CHANNEL_ID` | `UC...` 실제 채널 ID |
 | `VITE_YOUTUBE_URL` | 실제 채널 공개 URL |
-| `VITE_DISCORD_URL` | 실제 Discord 초대 URL |
+| `VITE_DISCORD_URL` | 실제 Discord 초대 URL (비우면 링크 숨김) |
+| `VITE_APPCHECK_SITE_KEY` | App Check용 reCAPTCHA Enterprise 사이트 키 |
 
 이 변수들은 Vite 빌드 결과에 포함되므로 secret이 아닙니다. `PLAY_SESSION_SECRET`, OAuth client secret, Firebase Admin service account key는 여기에 등록하지 않습니다.
 

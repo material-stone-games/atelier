@@ -62,7 +62,8 @@ Repository Settings → Pages에서 Source를 **GitHub Actions**로 선택합니
 - `VITE_FUNCTIONS_BASE_URL`
 - `VITE_YOUTUBE_CHANNEL_ID`
 - `VITE_YOUTUBE_URL`
-- `VITE_DISCORD_URL`
+- `VITE_DISCORD_URL` (비우면 Discord 링크를 숨김)
+- `VITE_APPCHECK_SITE_KEY` (reCAPTCHA Enterprise 사이트 키. 설정하면 App Check 사용, 모든 callable은 App Check를 강제)
 
 Firebase Web config는 브라우저에 노출되는 값이므로 비밀값으로 취급하지 않습니다. 게임 세션 서명 키와 서버 자격증명은 저장소에 넣지 않습니다.
 
