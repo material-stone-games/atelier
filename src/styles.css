@@ -73,7 +73,7 @@ h1 em, .hero h1 em, .page-heading h1 em, .game-detail-copy h1 em { color: var(--
 .catalogue-count, .comment-rule { color: var(--muted); font-family: var(--mono); font-size: 10px; }
 .game-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .game-card { min-width: 0; display: block; }
-.game-card-art { min-height: 310px; position: relative; overflow: hidden; background: radial-gradient(circle at 40% 35%, rgba(117,169,255,.42), transparent 19%), linear-gradient(140deg, #28373e, #121719 65%); background-size: cover; background-position: center; transition: transform .35s; }
+.game-card-art { aspect-ratio: 16 / 10; position: relative; overflow: hidden; background: radial-gradient(circle at 40% 35%, rgba(117,169,255,.42), transparent 19%), linear-gradient(140deg, #28373e, #121719 65%); background-size: cover; background-position: center; transition: transform .35s; }
 .game-card:hover .game-card-art { transform: scale(.98); }
 .game-card:nth-child(2n) .game-card-art { background-image: radial-gradient(circle at 60% 35%, rgba(255,113,68,.56), transparent 18%), linear-gradient(140deg, #493a36, #161719 66%); }
 .game-card:nth-child(3n) .game-card-art { background-image: radial-gradient(circle at 50% 48%, rgba(166,205,124,.45), transparent 19%), linear-gradient(140deg, #33403c, #131919 67%); }
