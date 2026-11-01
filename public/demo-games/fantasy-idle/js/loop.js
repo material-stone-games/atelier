@@ -24,6 +24,8 @@ import { getRandomArtifact } from './artifact-data.js';
 import { fx, resetFx, updateFx, renderWorldFx, renderScreenFx, renderUiFx, addShake, addHitstop, showBanner } from './fx.js';
 import { pointer, ui, beginUiFrame, buttonClickFeedback } from './ui.js';
 import { sfx, unlockAudio, toggleMute, isMuted } from './sfx.js';
+import { pixWindow, pixText } from './pixel.js';
+import { drawIcon } from './icons.js';
 
 // 유물 드롭 접근용 글로벌 브리지
 globalThis.__fantasyImports = { getRandomArtifact };
@@ -265,13 +267,9 @@ function render() {
     renderUiFx(ctx);
 
     if (isMuted()) {
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.beginPath(); ctx.roundRect(W - 86, H - 24, 80, 18, 5); ctx.fill();
-        ctx.fillStyle = '#c0c8e0';
-        ctx.font = '10px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('🔇 음소거 (M)', W - 46, H - 11);
-        ctx.textAlign = 'left';
+        pixWindow(ctx, W - 108, H - 34, 102, 28);
+        drawIcon(ctx, 'mute', W - 98, H - 28, 16);
+        pixText(ctx, '음소거 (M)', W - 16, H - 15, 10, '#c2d0dc', 'right');
     }
 
     // 페이드 오버레이

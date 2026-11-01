@@ -1,155 +1,120 @@
-// HUD 렌더링: HP바, 능력치, 재화, 유물 아이콘
-import { W, H, C, VIEW_X } from './constants.js';
+// HUD 렌더링 (픽셀 창 스타일): HP·능력치, 스테이지 진행, 재화, 처치 수, 유물, 콤보, 보스 HP
+import { W, H, VIEW_X } from './constants.js';
 import { state } from './state.js';
 import { drawArtifactIcon } from './artifact-ui.js';
 import { STAGE_LEN, regionOf, stageLabel, stageBossKind } from './stages.js';
 import { fx } from './fx.js';
+import { pixWindow, pixText } from './pixel.js';
+import { drawIcon } from './icons.js';
 
 let hpTrail = 1;      // 피해 잔상 비율
 let lastHud = 0;
+
+// 칸 단위 게이지: ratio까지 채우고 trail까지 밝은 잔상
+export function segBar(ctx, x, y, n, segW, h, ratio, trail, col, colHi, empty = '#1a1c2c') {
+    for (let i = 0; i < n; i++) {
+        const sx = x + i * (segW + 2);
+        const p = (i + 1) / n;
+        let c = empty;
+        if (p <= ratio + 1e-6 || (i === 0 && ratio > 0)) c = col;
+        else if (p <= trail + 1e-6) c = '#f4f4f4';
+        ctx.fillStyle = c;
+        ctx.fillRect(sx, y, segW, h);
+        if (c === col) {
+            ctx.fillStyle = colHi;
+            ctx.fillRect(sx, y, segW, 2);
+        }
+    }
+}
 
 export function renderHUD(ctx, player) {
     const now = performance.now() / 1000;
     const dt = Math.min(0.05, now - lastHud);
     lastHud = now;
 
-    // ── 상단 HUD 배경 ──────────────────────────────────
-    const bgG = ctx.createLinearGradient(0, 0, 0, 54);
-    bgG.addColorStop(0, 'rgba(8,8,24,0.9)');
-    bgG.addColorStop(1, 'rgba(8,8,24,0.55)');
-    ctx.fillStyle = bgG;
-    ctx.fillRect(0, 0, W, 52);
-
-    // HP 바 (피해 잔상 + 저체력 맥동)
-    const hpBarW = 180;
+    // ── 좌상단: HP + 능력치 ───────────────────────────
     const hpRatio = Math.max(0, player.hp / player.maxHp);
     if (hpTrail < hpRatio) hpTrail = hpRatio;
     else hpTrail += (hpRatio - hpTrail) * Math.min(1, dt * 3);
     const low = hpRatio <= 0.25 && hpRatio > 0;
-    ctx.save();
-    if (low) {
-        const k = 1 + Math.max(0, Math.sin(now * 8)) * 0.04;
-        ctx.translate(8 + hpBarW / 2, 15);
-        ctx.scale(k, k);
-        ctx.translate(-(8 + hpBarW / 2), -15);
-    }
-    ctx.fillStyle = '#2a0c0c';
-    ctx.beginPath(); ctx.roundRect(8, 8, hpBarW, 14, 4); ctx.fill();
-    ctx.fillStyle = '#fff0c0';
-    ctx.beginPath(); ctx.roundRect(8, 8, Math.max(0, hpBarW * hpTrail), 14, 4); ctx.fill();
-    const hpG = ctx.createLinearGradient(0, 8, 0, 22);
-    const hc = hpRatio > 0.5 ? ['#80f070', '#3a9a30'] : hpRatio > 0.25 ? ['#ffd060', '#c08010'] : ['#ff6050', '#a01810'];
-    hpG.addColorStop(0, hc[0]); hpG.addColorStop(1, hc[1]);
-    ctx.fillStyle = player.hitFlash > 0 ? '#ffffff' : hpG;
-    ctx.beginPath(); ctx.roundRect(8, 8, Math.max(0, hpBarW * hpRatio), 14, 4); ctx.fill();
-    ctx.strokeStyle = low ? `rgba(255,80,80,${0.6 + Math.sin(now * 8) * 0.4})` : '#606878';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.roundRect(8, 8, hpBarW, 14, 4); ctx.stroke();
-    ctx.fillStyle = C.text;
-    ctx.font = 'bold 10px monospace';
-    ctx.fillText(`HP ${Math.ceil(player.hp)} / ${player.maxHp}`, 14, 19);
-    ctx.restore();
+    pixWindow(ctx, 6, 6, 262, 66, low && Math.sin(now * 8) > 0 ? { border: '#ef7d57' } : {});
+    const beat = low ? Math.max(0, Math.sin(now * 8)) * 2 : 0;
+    drawIcon(ctx, 'heart', 16 - beat / 2, 15 - beat / 2, 20 + beat);
+    const hpCol = hpRatio > 0.5 ? '#38b764' : hpRatio > 0.25 ? '#ffcd75' : '#b13e53';
+    const hpHi = hpRatio > 0.5 ? '#a7f070' : hpRatio > 0.25 ? '#fff3b0' : '#ef7d57';
+    segBar(ctx, 42, 17, 20, 9, 14, hpRatio, hpTrail, hpCol, hpHi);
+    pixText(ctx, `${Math.ceil(player.hp)}/${player.maxHp}`, 258, 46, 11, '#f4f4f4', 'right');
+    const stats = [['atk', player.atk], ['def', player.def], ['spd', player.atkSpd.toFixed(1)], ['steal', `${Math.round(player.lifesteal * 100)}%`]];
+    stats.forEach(([ic, v], i) => {
+        const x = 16 + i * 52;
+        drawIcon(ctx, ic, x, 44, 16);
+        pixText(ctx, `${v}`, x + 20, 58, 11);
+    });
 
-    // 능력치
-    ctx.fillStyle = C.text;
-    ctx.font = '11px monospace';
-    ctx.fillText(`⚔ ${player.atk}`, 200, 18);
-    ctx.fillText(`🛡 ${player.def}`, 260, 18);
-    ctx.fillText(`⚡ ${player.atkSpd.toFixed(1)}`, 320, 18);
-
-    // 재화 (코인이 도착하면 튕김)
-    const bump = 1 + fx.goldBump * 0.35;
-    ctx.save();
-    ctx.translate(8, 40);
-    ctx.scale(bump, bump);
-    ctx.fillStyle = fx.goldBump > 0.5 ? '#fff4a0' : C.gold;
-    ctx.font = 'bold 12px monospace';
-    ctx.fillText(`💰 ${state.gold}G`, 0, 4);
-    ctx.restore();
-
-    // 콤보
-    if (player.combo >= 3) {
-        const p = Math.min(1, player.comboTimer / 2);
-        ctx.fillStyle = `rgba(255,${200 - Math.min(150, player.combo * 5)},80,${0.4 + p * 0.6})`;
-        ctx.font = `bold ${14 + Math.min(10, player.combo / 3)}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.fillText(`${player.combo} COMBO`, VIEW_X, 120);
-        ctx.textAlign = 'left';
-    }
-
+    // ── 상단 가운데: 스테이지 ─────────────────────────
     _renderStage(ctx);
 
-    // 처치 수
-    ctx.fillStyle = '#c0a0a0';
-    ctx.font = '10px monospace';
-    ctx.fillText(`💀 ${state.sessionKills}`, W - 80, 20);
+    // ── 우상단: 골드 + 처치 ───────────────────────────
+    pixWindow(ctx, 618, 6, 176, 34);
+    const bump = fx.goldBump * 3;
+    drawIcon(ctx, 'coin', 628 - bump / 2, 13 - bump / 2, 20 + bump);
+    pixText(ctx, `${state.gold.toLocaleString()} G`, 784, 29, 13, fx.goldBump > 0.5 ? '#fff3b0' : '#ffcd75', 'right');
+    pixWindow(ctx, 690, 42, 104, 28);
+    drawIcon(ctx, 'kill', 699, 48, 16);
+    pixText(ctx, `${state.sessionKills}`, 784, 62, 12, '#f4f4f4', 'right');
 
-    // 유물 아이콘 (하단 좌측)
+    // ── 콤보 ───────────────────────────────────────────
+    if (player.combo >= 3) {
+        const p = Math.min(1, player.comboTimer / 2);
+        ctx.globalAlpha = 0.4 + p * 0.6;
+        const size = 16 + Math.min(10, Math.floor(player.combo / 3) * 2);
+        pixText(ctx, `${player.combo} COMBO`, VIEW_X, 152, size, player.combo >= 20 ? '#ef7d57' : '#ffcd75', 'center', '#5d275d');
+        ctx.globalAlpha = 1;
+    }
+
+    // ── 하단 좌측: 유물 ────────────────────────────────
     _renderArtifacts(ctx);
 }
 
-// 스테이지 표시 + 다음 관문까지 진행 바
+// 스테이지 표시 + 다음 관문까지 진행 칸
 function _renderStage(ctx) {
-    const cx = W / 2 + 40;
     const kind = stageBossKind(state.stage);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#e8e8f0';
-    ctx.font = 'bold 13px monospace';
-    ctx.fillText(`STAGE ${stageLabel(state.stage)}  ${regionOf(state.stage).name}`, cx, 19);
-
-    const bw = 170, bx = cx - bw / 2, by = 27;
+    const x = 300, w = 220;
+    pixWindow(ctx, x, 6, w, 52);
+    pixText(ctx, `STAGE ${stageLabel(state.stage)}  ${regionOf(state.stage).name}`, x + w / 2, 27, 12, '#ffcd75', 'center');
     const p = Math.min(1, Math.max(0, state.distance / STAGE_LEN - state.stage));
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.beginPath(); ctx.roundRect(bx, by, bw, 7, 3); ctx.fill();
-    const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
-    g.addColorStop(0, '#4080e8'); g.addColorStop(1, kind ? '#e84040' : '#40c8c8');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.roundRect(bx, by, Math.max(3, bw * p), 7, 3); ctx.fill();
-    // 끝 표시: 보스 관문이면 해골, 아니면 깃발
-    ctx.font = '12px "Segoe UI Emoji","Apple Color Emoji",sans-serif';
-    ctx.fillText(kind === 'boss' ? '☠️' : kind === 'mini' ? '💀' : '🚩', bx + bw + 10, by + 8);
-    ctx.fillStyle = '#8090a8';
-    ctx.font = '9px monospace';
-    ctx.fillText(state.holding ? '보스와 대결 중!' : `${Math.floor(state.distance)} m`, cx, by + 18);
-    ctx.textAlign = 'left';
+    const n = 12;
+    for (let i = 0; i < n; i++) {
+        const done = (i + 1) / n <= p + 1e-6;
+        const cur = !done && i / n <= p;
+        ctx.fillStyle = done ? (kind ? '#b13e53' : '#38b764') : cur ? '#f4f4f4' : '#1a1c2c';
+        ctx.fillRect(x + 16 + i * 13, 36, 10, 10);
+        if (done) { ctx.fillStyle = kind ? '#ef7d57' : '#a7f070'; ctx.fillRect(x + 16 + i * 13, 36, 10, 3); }
+    }
+    drawIcon(ctx, kind === 'boss' ? 'boss' : kind === 'mini' ? 'mini' : 'flag', x + w - 42, 32, 18);
+    const label = state.holding ? '보스와 대결 중!' : `${Math.floor(state.distance)} m`;
+    pixText(ctx, label, x + w / 2, 72, 10, state.holding ? '#ef7d57' : '#c2d0dc', 'center');
 }
 
 function _renderArtifacts(ctx) {
     if (!state.artifacts.length) return;
-    const iconSize = 24;
-    const pad = 4;
-    const baseY = H - iconSize - 8;
-    const baseX = 8;
-    const maxShow = 16;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    const rowW = Math.min(state.artifacts.length, maxShow) * (iconSize + pad);
-    ctx.fillRect(baseX - 2, baseY - 2, rowW + 4, iconSize + 4);
-
+    const size = 28, pad = 4, maxShow = 12;
+    const n = Math.min(state.artifacts.length, maxShow);
+    pixWindow(ctx, 6, H - size - 22, n * (size + pad) + 18, size + 18);
     state.artifacts.slice(0, maxShow).forEach((id, i) => {
-        drawArtifactIcon(ctx, id, baseX + i * (iconSize + pad), baseY, iconSize);
+        drawArtifactIcon(ctx, id, 15 + i * (size + pad), H - size - 13, size);
     });
 }
 
 // 보스 HP바 (상단 중앙 별도 표시)
 export function renderBossHUD(ctx, boss) {
     if (!boss) return;
-    const bw = 300;
-    const bx = (W - bw) / 2;
-    const by = 58;
-    ctx.fillStyle = 'rgba(8,8,24,0.85)';
-    ctx.fillRect(bx - 4, by - 4, bw + 8, 30);
-    ctx.fillStyle = '#401010';
-    ctx.fillRect(bx, by, bw, 14);
+    const big = boss.rank === 'boss';
+    const bw = 320, bx = (W - bw) / 2, by = 82;
+    pixWindow(ctx, bx, by, bw, 44, { border: big ? '#ffcd75' : '#ef7d57' });
+    drawIcon(ctx, big ? 'boss' : 'mini', bx + 12, by + 12, 20);
+    pixText(ctx, boss.name, bx + 40, by + 23, 12, big ? '#ffcd75' : '#ef7d57');
+    pixText(ctx, `${Math.ceil(Math.max(0, boss.hp))}/${boss.maxHp}`, bx + bw - 12, by + 23, 10, '#f4f4f4', 'right');
     const r = Math.max(0, boss.hp / boss.maxHp);
-    ctx.fillStyle = boss.rank === 'boss' ? '#cc2020' : '#cc6020';
-    ctx.fillRect(bx, by, Math.round(bw * r), 14);
-    ctx.strokeStyle = boss.rank === 'boss' ? '#ffcc00' : '#ff8800';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(bx, by, bw, 14);
-    ctx.fillStyle = boss.rank === 'boss' ? C.gold : '#ffaa40';
-    ctx.font = `bold 10px monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`${boss.name} ${Math.ceil(boss.hp)}/${boss.maxHp}`, W / 2, by + 11);
-    ctx.textAlign = 'left';
+    segBar(ctx, bx + 40, by + 28, 26, 8, 8, r, Math.max(0, boss.hpTrail / boss.maxHp), '#b13e53', '#ef7d57');
 }

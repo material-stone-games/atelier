@@ -8,6 +8,7 @@ import { applyOnHit } from './artifacts.js';
 import { STRIKE_AT } from './player.js';
 import { fx, addShake, addHitstop, spawnSlash, spawnRing, spawnCoins, spawnText, showBanner } from './fx.js';
 import { sfx } from './sfx.js';
+import { pixText } from './pixel.js';
 
 // 스테이지 끝의 보스 소환
 function spawnStageBoss(kind) {
@@ -27,7 +28,7 @@ function spawnStageBoss(kind) {
     state.stageBossSpawned = true;
     addShake(6);
     sfx.boss();
-    spawnText(W / 2, 120, big ? `☠ 보스 ${boss.name} 등장!` : `⚠ ${boss.name} 등장!`, big ? '#ff4040' : '#ffaa40', 20);
+    spawnText(W / 2, 120, big ? `보스 ${boss.name} 등장!` : `${boss.name} 등장!`, big ? '#ff4040' : '#ffaa40', 20);
 }
 
 // 스테이지 진행: 전진, 보스 관문에서 대기, 스테이지 클리어
@@ -224,7 +225,7 @@ function tryDropArtifact(rank, stats) {
             const a = getRandomArtifact(rank);
             if (a && !state.artifacts.includes(a)) {
                 state.artifacts.push(a);
-                spawnText(W / 2, 150, '✨ 유물 획득!', '#e0a0ff', 18);
+                spawnText(W / 2, 150, '유물 획득!', '#e0a0ff', 18);
                 sfx.artifact();
             }
         }
@@ -275,27 +276,18 @@ export function renderEffects(ctx) {
         const a = p.life / p.maxLife;
         ctx.globalAlpha = Math.min(1, a * 1.5);
         ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, Math.max(0.5, p.size * (0.4 + 0.6 * a)), 0, Math.PI * 2);
-        ctx.fill();
+        const sz = Math.max(1, Math.round(p.size * (0.4 + 0.6 * a)));   // 네모 픽셀 파편
+        ctx.fillRect(Math.round(p.x - sz / 2), Math.round(p.y - sz / 2), sz, sz);
     }
     ctx.globalAlpha = 1;
 
-    ctx.textAlign = 'center';
-    ctx.lineJoin = 'round';
     for (const t of state.dmgTexts) {
         const p = 1 - t.life / 0.9;
         const pop = p < 0.12 ? 0.5 + (p / 0.12) * 0.9 : 1.4 - Math.min(0.4, (p - 0.12) * 2);
-        const size = Math.round((t.crit ? 18 : 13) * pop);
+        const size = Math.round((t.crit ? 16 : 11) * pop);
         ctx.globalAlpha = Math.min(1, t.life / 0.3);
-        ctx.font = `bold ${size}px monospace`;
-        ctx.lineWidth = 3.5;
-        ctx.strokeStyle = t.crit ? '#5a1800' : 'rgba(0,0,0,0.85)';
         const label = t.crit ? `${t.dmg}!` : `${t.dmg}`;
-        ctx.strokeText(label, t.x, t.y);
-        ctx.fillStyle = t.crit ? '#ffdd30' : '#ffffff';
-        ctx.fillText(label, t.x, t.y);
+        pixText(ctx, label, Math.round(t.x), Math.round(t.y), size, t.crit ? '#ffcd75' : '#f4f4f4', 'center', t.crit ? '#b13e53' : '#1a1c2c');
     }
     ctx.globalAlpha = 1;
-    ctx.textAlign = 'left';
 }

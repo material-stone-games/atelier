@@ -2,6 +2,8 @@
 // 게임 감각(Juice) 효과: 화면 흔들림, 히트스톱, 참격, 링, 코인, 투사체, 비네트
 import { W, H, VIEW_FLOOR } from './constants.js';
 import { sfx } from './sfx.js';
+import { pixWindow, pixText } from './pixel.js';
+import { drawIcon } from './icons.js';
 
 export const fx = {
     shake: 0,        // 현재 흔들림 세기(px)
@@ -70,7 +72,7 @@ export function spawnUiBurst(x, y, color) {
 }
 
 // HUD 골드 위치 (코인이 날아갈 곳)
-const GOLD_TARGET = { x: 22, y: 40 };
+const GOLD_TARGET = { x: 638, y: 23 };
 
 export function updateFx(dt) {
     fx.shake = Math.max(0, fx.shake - dt * 30);
@@ -122,30 +124,33 @@ export function renderWorldFx(ctx) {
         ctx.save();
         ctx.translate(s.x, s.y);
         ctx.scale(s.dir, 1);
-        ctx.globalAlpha = 1 - p;
-        ctx.strokeStyle = s.color;
-        ctx.lineCap = 'round';
+        ctx.globalAlpha = 1 - p * 0.8;
         const r = s.size * (0.8 + p * 0.4);
         const start = -1.6 + p * 0.6, end = 1.1 + p * 0.3;
-        ctx.lineWidth = 7 * (1 - p) + 1;
-        ctx.beginPath();
-        ctx.arc(0, 0, r, start, end);
-        ctx.stroke();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2 * (1 - p) + 0.5;
-        ctx.beginPath();
-        ctx.arc(0, 0, r - 3, start + 0.2, end - 0.1);
-        ctx.stroke();
+        const u = 2;
+        const thick = Math.max(1, Math.round(3 * (1 - p)));
+        for (let a = start; a <= end; a += 0.09) {
+            const mid = 1 - Math.abs((a - start) / (end - start) - 0.5) * 2;   // 가운데가 가장 두꺼움
+            const tw = Math.max(1, Math.round(thick * (0.4 + mid)));
+            const px = Math.round(Math.cos(a) * r / u) * u, py = Math.round(Math.sin(a) * r / u) * u;
+            ctx.fillStyle = s.color;
+            ctx.fillRect(px - tw, py - tw, tw * 2 + u, tw * 2 + u);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(px - u, py - u, u * 2, u * 2);
+        }
         ctx.restore();
     }
     for (const r of fx.rings) {
         const p = 1 - r.life / r.maxLife;
         ctx.globalAlpha = 1 - p;
-        ctx.strokeStyle = r.color;
-        ctx.lineWidth = r.width * (1 - p) + 0.5;
-        ctx.beginPath();
-        ctx.arc(r.x, r.y, r.maxR * (0.2 + 0.8 * Math.sqrt(p)), 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.fillStyle = r.color;
+        const rad = r.maxR * (0.2 + 0.8 * Math.sqrt(p));
+        const sz = Math.max(2, Math.round(r.width * (1 - p) + 1));
+        const steps = Math.max(8, Math.round(rad * 0.8));
+        for (let i = 0; i < steps; i++) {
+            const a = (i / steps) * Math.PI * 2;
+            ctx.fillRect(Math.round((r.x + Math.cos(a) * rad) / 2) * 2, Math.round((r.y + Math.sin(a) * rad) / 2) * 2, sz, sz);
+        }
     }
     ctx.globalAlpha = 1;
     for (const p of fx.projectiles) {
@@ -153,11 +158,12 @@ export function renderWorldFx(ctx) {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(a);
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(4, 0); ctx.stroke();
-        ctx.fillStyle = '#e0e0e0';
-        ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(2, -3); ctx.lineTo(2, 3); ctx.fill();
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-12, -1, 14, 2);
+        ctx.fillStyle = '#f4f4f4';
+        ctx.fillRect(2, -2, 3, 4); ctx.fillRect(5, -1, 2, 2);
+        ctx.fillStyle = '#b13e53';
+        ctx.fillRect(-14, -3, 3, 2); ctx.fillRect(-14, 1, 3, 2);
         ctx.restore();
     }
 }
@@ -167,28 +173,16 @@ export function renderScreenFx(ctx) {
     for (const c of fx.coins) {
         const sx = Math.abs(Math.cos(c.spin));
         ctx.save();
-        ctx.translate(c.x, c.y);
-        ctx.scale(Math.max(0.2, sx), 1);
-        ctx.fillStyle = '#f5c518';
-        ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff2a0';
-        ctx.fillRect(-1, -2, 2, 3);
-        ctx.strokeStyle = '#a07808';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        ctx.translate(Math.round(c.x), Math.round(c.y));
+        ctx.scale(sx > 0.66 ? 1 : sx > 0.33 ? 0.6 : 0.25, 1);   // 3단계로 끊어 도는 픽셀 코인
+        drawIcon(ctx, 'coin', -6, -6, 12);
         ctx.restore();
     }
     for (const t of fx.texts) {
         const p = 1 - t.life / t.maxLife;
         const pop = p < 0.15 ? 0.6 + p / 0.15 * 0.6 : 1.2 - Math.min(0.2, (p - 0.15));
         ctx.globalAlpha = Math.min(1, t.life / 0.3);
-        ctx.font = `bold ${Math.round(t.size * pop)}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-        ctx.strokeText(t.text, t.x, t.y);
-        ctx.fillStyle = t.color;
-        ctx.fillText(t.text, t.x, t.y);
+        pixText(ctx, t.text, Math.round(t.x), Math.round(t.y), Math.round(t.size * pop), t.color, 'center');
     }
     ctx.globalAlpha = 1;
     ctx.textAlign = 'left';
@@ -211,33 +205,12 @@ function _renderBanner(ctx, b) {
     const y = 150;
     ctx.save();
     ctx.globalAlpha = Math.max(0, open);
-    const bw = W * open;
-    const g = ctx.createLinearGradient(W / 2 - bw / 2, 0, W / 2 + bw / 2, 0);
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(0.2, 'rgba(8,8,24,0.85)');
-    g.addColorStop(0.8, 'rgba(8,8,24,0.85)');
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(W / 2 - bw / 2, y - 34, bw, 62);
-    ctx.fillStyle = b.color;
-    ctx.fillRect(W / 2 - bw * 0.35, y - 34, bw * 0.7, 2);
-    ctx.fillRect(W / 2 - bw * 0.35, y + 26, bw * 0.7, 2);
-    const pop = p < 0.1 ? 0.6 + (p / 0.1) * 0.5 : 1.1 - Math.min(0.1, (p - 0.1) * 0.5);
-    ctx.translate(W / 2, y);
-    ctx.scale(pop, pop);
-    ctx.textAlign = 'center';
-    ctx.lineJoin = 'round';
-    ctx.font = 'bold 26px monospace';
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-    ctx.strokeText(b.title, 0, 0);
-    ctx.fillStyle = b.color;
-    ctx.fillText(b.title, 0, 0);
-    ctx.font = 'bold 13px monospace';
-    ctx.lineWidth = 4;
-    ctx.strokeText(b.sub, 0, 20);
-    ctx.fillStyle = '#e8e8f0';
-    ctx.fillText(b.sub, 0, 20);
+    const bw = Math.round(Math.max(24, 380 * open) / 2) * 2;
+    pixWindow(ctx, W / 2 - bw / 2, y - 38, bw, 70, { border: b.color });
+    if (open > 0.6) {
+        pixText(ctx, b.title, W / 2, y - 2, 24, b.color, 'center');
+        pixText(ctx, b.sub, W / 2, y + 20, 12, '#f4f4f4', 'center');
+    }
     ctx.restore();
 }
 

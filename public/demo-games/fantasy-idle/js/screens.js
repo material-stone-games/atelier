@@ -1,13 +1,16 @@
 // 화면 렌더링: TITLE, MAIN HUB, DEAD RESULT
-import { W, H, C, GAME_VERSION } from './constants.js';
+import { W, H, C, GAME_VERSION, PLAYER_X, FLOOR_Y, applyCamera } from './constants.js';
 import { state, savePersist, SAVE_KEY } from './state.js';
 import { REGIONS, regionIndex, stageLabel } from './stages.js';
 import { drawArtifactIcon } from './artifact-ui.js';
 import { renderUpgradeTreeEmbed, handleTreeClick } from './upgrade-tree.js';
 import { drawButton } from './ui.js';
 import { drawKnight } from './player.js';
-import { drawEnemyArt } from './enemy-art.js';
-import { groundShadow } from './draw.js';
+import { drawEnemyPix, pixShadow } from './pixel-actors.js';
+import { pixWindow, pixText } from './pixel.js';
+import { drawIcon } from './icons.js';
+import { renderSky, renderWorld } from './world.js';
+import { getStats } from './upgrade-data.js';
 
 // MAIN 화면 트리 기준 중심 (드래그 오프셋 적용 전)
 export const TREE_BASE_CX = 500;
@@ -51,167 +54,103 @@ const ZB = { y: H - 38, size: 28, xs: [W - 104, W - 72, W - 40] };
 
 // ── TITLE 화면 ─────────────────────────────────────────
 export function renderTitle(ctx) {
-    ctx.fillStyle = '#050510';
-    ctx.fillRect(0, 0, W, H);
-    // 별
-    for (let i = 0; i < 80; i++) {
-        const sx = (i * 137 + 50) % W;
-        const sy = (i * 89 + 30) % (H * 0.7);
-        ctx.fillStyle = `rgba(255,255,255,${0.3 + (i % 5) * 0.1})`;
-        ctx.fillRect(sx, sy, 1 + (i % 2), 1 + (i % 2));
-    }
-    // 제목
-    ctx.fillStyle = C.gold;
-    ctx.font = 'bold 36px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('⚔ FANTASY IDLE ⚔', W / 2, H / 2 - 80);
-    ctx.fillStyle = '#a090c8';
-    ctx.font = '14px monospace';
-    ctx.fillText('죽고 부활하며 성장하는 판타지 방치형 RPG', W / 2, H / 2 - 48);
+    // 초원 배경 위에 기사와 슬라임이 마주봄
+    const t = performance.now() / 1000;
+    renderSky(ctx);
+    ctx.save();
+    applyCamera(ctx);
+    renderWorld(ctx);
+    drawKnight(ctx, PLAYER_X, FLOOR_Y, { t, atk: (t % 2.2) / 0.5 < 1 ? (t % 2.2) / 0.5 : 0 });
+    pixShadow(ctx, PLAYER_X + 70, FLOOR_Y, 22);
+    ctx.save();
+    ctx.translate(PLAYER_X + 70, FLOOR_Y);
+    drawEnemyPix(ctx, { type: 'slime', w: 18, h: 14, color: '#60e060' }, t, false, 0, false);
+    ctx.restore();
+    ctx.restore();
+
+    // 로고 창
+    const lw = 420, lx = W / 2 - lw / 2;
+    pixWindow(ctx, lx, 46, lw, 104, { border: '#ffcd75' });
+    drawIcon(ctx, 'atk', lx + 26, 70, 34);
+    drawIcon(ctx, 'atk', lx + lw - 60, 70, 34, { flip: true });
+    pixText(ctx, 'FANTASY IDLE', W / 2, 98, 34, '#ffcd75', 'center', '#5d275d');
+    pixText(ctx, '죽고 부활하며 성장하는 판타지 방치형 RPG', W / 2, 126, 12, '#c2d0dc', 'center');
 
     // 통계 (세이브 있을 때)
     const hasSave = !!localStorage.getItem(SAVE_KEY);
     if (hasSave && (state.maxStage > 0 || state.totalKills > 0)) {
-        ctx.fillStyle = '#7080a0';
-        ctx.font = '11px monospace';
-        ctx.fillText(
-            `최고 스테이지: ${stageLabel(state.maxStage)}  |  총 처치: ${state.totalKills}  |  사망: ${state.totalDeaths}`,
-            W / 2, H / 2 - 20
-        );
+        pixText(ctx, `최고 스테이지 ${stageLabel(state.maxStage)}   처치 ${state.totalKills}   사망 ${state.totalDeaths}`,
+            W / 2, H / 2 - 18, 11, '#f4f4f4', 'center');
     }
 
-    // 타이틀 장식: 기사와 슬라임이 마주봄
-    const t = performance.now() / 1000;
-    ctx.fillStyle = '#141428';
-    ctx.fillRect(0, H - 70, W, 70);
-    ctx.fillStyle = '#2a2a50';
-    ctx.fillRect(0, H - 70, W, 2);
-    ctx.save();
-    ctx.translate(W / 2 - 230, H - 56);
-    ctx.scale(2, 2);
-    drawKnight(ctx, 0, 0, { t, atk: (t % 2.2) / 0.5 < 1 ? (t % 2.2) / 0.5 : 0 });
-    ctx.restore();
-    ctx.save();
-    ctx.translate(W / 2 + 230, H - 56);
-    ctx.scale(2, 2);
-    groundShadow(ctx, 0, 0, 22);
-    drawEnemyArt(ctx, { type: 'slime', w: 18, h: 14, color: '#60e060' }, t, false, 0, false);
-    ctx.restore();
+    _drawButton(ctx, W / 2 - 80, H / 2, 160, 36, '새 게임', C.gold, '#29366f', { icon: 'new' });
+    _drawButton(ctx, W / 2 - 80, H / 2 + 50, 160, 36, '불러오기', hasSave ? '#73eff7' : '#566c86', '#29366f', { disabled: !hasSave, icon: 'load' });
 
-    // 새 게임 버튼
-    _drawButton(ctx, W / 2 - 80, H / 2, 160, 36, '▶  새 게임', C.gold, '#1a1428');
-    // 불러오기 버튼
-    const loadColor = hasSave ? '#6080e8' : '#404060';
-    const loadBg    = hasSave ? '#101828' : '#0a0a16';
-    _drawButton(ctx, W / 2 - 80, H / 2 + 50, 160, 36, '📂  불러오기', loadColor, loadBg, { disabled: !hasSave });
-
-    // 버전
-    ctx.fillStyle = '#404050';
-    ctx.font = '9px monospace';
-    ctx.fillText(`v${GAME_VERSION}  Fantasy Idle`, W / 2, H - 10);
-    ctx.textAlign = 'left';
+    pixText(ctx, `v${GAME_VERSION}  Fantasy Idle`, W / 2, H - 10, 10, '#c2d0dc', 'center');
 }
 
 // ── MAIN HUB 화면 ──────────────────────────────────────
 export function renderMainHub(ctx, player) {
-    ctx.fillStyle = '#080818';
+    // 바탕: 남색 + 픽셀 체크 무늬
+    ctx.fillStyle = '#1a1c2c';
     ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#20233a';
+    for (let y = 0; y < H; y += 16) for (let x = (y / 16) % 2 ? 16 : 0; x < W; x += 32) ctx.fillRect(x, y, 16, 16);
 
     // ── 상단 바 ─────────────────────────────────────────
-    ctx.fillStyle = '#0d0d28';
-    ctx.fillRect(0, 0, W, 44);
-    ctx.fillStyle = '#1a1a3a';
-    ctx.fillRect(0, 44, W, 1);
-    ctx.fillStyle = C.gold;
-    ctx.font = 'bold 16px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('⚔ 메인 기지', 12, 28);
-    ctx.fillStyle = C.gold;
-    ctx.font = '13px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`💰 ${state.gold} G`, W / 2, 28);
-    _drawButton(ctx, W - 148, 6, 140, 32, '▶  게임 시작', C.gold, '#1a1428');
+    pixWindow(ctx, 4, 4, 300, 40);
+    drawIcon(ctx, 'DEF_S2', 16, 13, 20);
+    pixText(ctx, '메인 기지', 44, 30, 15, '#ffcd75');
+    pixWindow(ctx, 312, 4, 170, 40);
+    drawIcon(ctx, 'coin', 324, 14, 20);
+    pixText(ctx, `${state.gold.toLocaleString()} G`, 470, 30, 14, '#ffcd75', 'right');
+    _drawButton(ctx, W - 148, 6, 140, 32, '게임 시작', C.gold, '#29366f', { icon: 'play' });
 
     // ── 좌측 패널 (0~190) ────────────────────────────────
-    // 능력치
-    ctx.fillStyle = '#0e0e24';
-    ctx.fillRect(8, 52, 180, 148);
-    ctx.strokeStyle = '#3040a0';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(8, 52, 180, 148);
-    ctx.fillStyle = '#8090c0';
-    ctx.font = 'bold 11px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('[ 현재 능력치 ]', 14, 70);
+    pixWindow(ctx, 4, 50, 186, 152);
+    pixText(ctx, '능력치', 18, 72, 12, '#73eff7');
+    const st = getStats();
     const stats = [
-        [`❤ HP`,   `${Math.ceil(player.hp)}/${player.maxHp}`],
-        [`⚔ ATK`,  `${player.atk}`],
-        [`🛡 DEF`,  `${player.def}`],
-        [`⚡ SPD`,  `${player.atkSpd.toFixed(1)}`],
-        [`🩸 흡혈`, `${Math.round(player.lifesteal * 100)}%`],
-        [`💰 재화`, `${state.gold} G`],
+        ['heart', `${Math.ceil(player.hp)}/${player.maxHp}`],
+        ['atk', `${player.atk}`],
+        ['def', `${player.def}`],
+        ['spd', `${player.atkSpd.toFixed(1)}`],
+        ['steal', `${Math.round(player.lifesteal * 100)}%`],
+        ['coin', `x${st.goldMult.toFixed(1)}`],
     ];
-    stats.forEach(([label, val], i) => {
-        ctx.fillStyle = '#6070a0';
-        ctx.font = '10px monospace';
-        ctx.fillText(label, 14, 88 + i * 17);
-        ctx.fillStyle = C.text;
-        ctx.fillText(val, 90, 88 + i * 17);
+    stats.forEach(([ic, val], i) => {
+        const y = 82 + i * 19;
+        drawIcon(ctx, ic, 18, y, 15);
+        pixText(ctx, val, 176, y + 12, 11, '#f4f4f4', 'right');
     });
 
     // 유물
-    ctx.fillStyle = '#0e0e24';
-    ctx.fillRect(8, 208, 180, 110);
-    ctx.strokeStyle = '#603080';
-    ctx.strokeRect(8, 208, 180, 110);
-    ctx.fillStyle = '#9070c0';
-    ctx.font = 'bold 11px monospace';
-    ctx.fillText(`[ 유물 (${state.artifacts.length}) ]`, 14, 224);
-    // 아이콘 격자 (마우스를 올리면 툴팁)
-    const cols = 6, size = 22, gap = 5;
+    pixWindow(ctx, 4, 206, 186, 116);
+    pixText(ctx, `유물 ${state.artifacts.length}`, 18, 228, 12, '#c9a8ff');
+    const cols = 6, size = 24, gap = 3;
     state.artifacts.slice(0, cols * 3).forEach((id, i) => {
-        drawArtifactIcon(ctx, id, 16 + (i % cols) * (size + gap), 232 + Math.floor(i / cols) * (size + gap), size);
+        drawArtifactIcon(ctx, id, 15 + (i % cols) * (size + gap), 236 + Math.floor(i / cols) * (size + gap), size);
     });
-    if (!state.artifacts.length) {
-        ctx.fillStyle = '#504070';
-        ctx.font = '10px monospace';
-        ctx.fillText('보스를 쓰러뜨려 획득', 14, 244);
-    }
+    if (!state.artifacts.length) pixText(ctx, '보스를 쓰러뜨려 획득', 18, 254, 10, '#8b9bb4');
 
     // 출발 지역 선택 (도달한 지역까지)
     state.startRegion = Math.min(state.startRegion, _maxStartRegion());
-    ctx.fillStyle = '#0e0e24';
-    ctx.fillRect(8, 326, 180, 78);
-    ctx.strokeStyle = '#305030';
-    ctx.strokeRect(8, 326, 180, 78);
-    ctx.fillStyle = '#50a050';
-    ctx.font = 'bold 11px monospace';
-    ctx.fillText('[ 출발 지역 ]', 14, 342);
+    pixWindow(ctx, 4, 326, 186, 84);
+    pixText(ctx, '출발 지역', 18, 346, 12, '#a7f070');
     const canPrev = state.startRegion > 0;
     const canNext = state.startRegion < _maxStartRegion();
-    _drawButton(ctx, REGION_BTN.prev, REGION_BTN.y, REGION_BTN.size, REGION_BTN.size, '◀', canPrev ? C.green : '#304030', '#0a140a', { disabled: !canPrev });
-    _drawButton(ctx, REGION_BTN.next, REGION_BTN.y, REGION_BTN.size, REGION_BTN.size, '▶', canNext ? C.green : '#304030', '#0a140a', { disabled: !canNext });
-    ctx.fillStyle = C.text;
-    ctx.font = 'bold 12px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`지역 ${state.startRegion + 1} · ${REGIONS[state.startRegion].name}`, 98, REGION_BTN.y + 17);
-    ctx.fillStyle = '#6a8a6a';
-    ctx.font = '10px monospace';
-    ctx.fillText(`최고 스테이지 ${stageLabel(state.maxStage)}`, 98, 396);
-    ctx.textAlign = 'left';
+    _drawButton(ctx, REGION_BTN.prev, REGION_BTN.y, REGION_BTN.size, REGION_BTN.size, '', '#a7f070', '#257179', { disabled: !canPrev, icon: 'left' });
+    _drawButton(ctx, REGION_BTN.next, REGION_BTN.y, REGION_BTN.size, REGION_BTN.size, '', '#a7f070', '#257179', { disabled: !canNext, icon: 'right' });
+    pixText(ctx, `${state.startRegion + 1} · ${REGIONS[state.startRegion].name}`, 98, REGION_BTN.y + 17, 12, '#f4f4f4', 'center');
+    pixText(ctx, `최고 ${stageLabel(state.maxStage)}`, 98, 398, 10, '#94b0c2', 'center');
 
     // ── 우측 드래그 가능 트리 영역 (190~800) ─────────────
-    // 반투명 배경 패널
-    ctx.fillStyle = 'rgba(8, 8, 24, 0.5)';
-    ctx.fillRect(192, 50, W - 192, H - 50);
-    ctx.strokeStyle = '#202044';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(192, 50, W - 192, H - 50);
+    pixWindow(ctx, 194, 50, W - 198, H - 54, { bg: '#1a1c2c', bg2: '#1d2036' });
 
     // 트리 렌더링 (클리핑 적용)
     ctx.save();
     ctx.beginPath();
-    ctx.rect(192, 50, W - 192, H - 50);
+    ctx.rect(200, 56, W - 210, H - 66);
     ctx.clip();
     _renderTreeGrid(ctx);
     const { cx, cy, len } = treeView();
@@ -219,17 +158,10 @@ export function renderMainHub(ctx, player) {
     ctx.restore();
 
     // 조작 안내 + 줌 버튼
-    ctx.fillStyle = 'rgba(8,8,24,0.75)';
-    ctx.beginPath(); ctx.roundRect(200, H - 26, 250, 20, 5); ctx.fill();
-    ctx.fillStyle = '#7080b0';
-    ctx.font = '10px monospace';
-    ctx.fillText('드래그: 이동  ·  휠/핀치: 확대·축소', 208, H - 12);
-    ctx.fillStyle = '#8090c0';
-    ctx.textAlign = 'right';
-    ctx.fillText(`${Math.round(state.treeZoom * 100)}%`, ZB.xs[0] - 8, ZB.y + 18);
-    ctx.textAlign = 'left';
-    ['−', '+', '⟲'].forEach((label, i) =>
-        _drawButton(ctx, ZB.xs[i], ZB.y, ZB.size, ZB.size, label, '#8090e0', '#141430'));
+    pixText(ctx, '드래그: 이동  ·  휠/핀치: 확대·축소', 210, H - 16, 10, '#94b0c2');
+    pixText(ctx, `${Math.round(state.treeZoom * 100)}%`, ZB.xs[0] - 8, ZB.y + 19, 11, '#c2d0dc', 'right');
+    ['minus', 'plus', 'reset'].forEach((ic, i) =>
+        _drawButton(ctx, ZB.xs[i], ZB.y, ZB.size, ZB.size, '', '#c2d0dc', '#333c7a', { icon: ic }));
 }
 
 // 트리 패널 배경 격자 (트리와 함께 이동/확대)
@@ -237,7 +169,7 @@ function _renderTreeGrid(ctx) {
     const { cx, cy, len } = treeView();
     const step = 52 * (len / 68);
     if (step < 8) return;
-    ctx.fillStyle = 'rgba(120,130,200,0.12)';
+    ctx.fillStyle = 'rgba(115,239,247,0.10)';
     const x0 = cx - Math.ceil((cx - 192) / step) * step;
     const y0 = cy - Math.ceil((cy - 50) / step) * step;
     for (let x = x0; x < W; x += step) {
@@ -254,25 +186,25 @@ export function zoomButtonAt(mx, my) {
 
 // ── DEAD 화면 ──────────────────────────────────────────
 export function renderDeadResult(ctx) {
-    ctx.fillStyle = 'rgba(8,0,0,0.88)';
+    ctx.fillStyle = 'rgba(26,8,16,0.92)';
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#c04040';
-    ctx.font = 'bold 28px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('☠ 사망', W / 2, H / 2 - 90);
-
-    ctx.fillStyle = C.text;
-    ctx.font = '14px monospace';
-    const lines = [
-        `도달 스테이지: ${stageLabel(state.stage)} (${REGIONS[regionIndex(state.stage)].name})`,
-        `이번 획득 재화: ${state.sessionGold} G`,
-        `적 처치: ${state.sessionKills} 마리`,
-        `최고 스테이지: ${stageLabel(state.maxStage)}`,
+    const w = 380, x = W / 2 - w / 2, y = H / 2 - 140;
+    pixWindow(ctx, x, y, w, 270, { border: '#b13e53' });
+    drawIcon(ctx, 'kill', W / 2 - 18, y + 16, 36);
+    pixText(ctx, '사망', W / 2, y + 78, 24, '#ef7d57', 'center');
+    const rows = [
+        ['flag', '도달 스테이지', `${stageLabel(state.stage)} ${REGIONS[regionIndex(state.stage)].name}`],
+        ['coin', '획득 재화', `${state.sessionGold} G`],
+        ['atk', '적 처치', `${state.sessionKills}`],
+        ['star', '최고 스테이지', stageLabel(state.maxStage)],
     ];
-    lines.forEach((l, i) => ctx.fillText(l, W / 2, H / 2 - 40 + i * 24));
-
-    _drawButton(ctx, W / 2 - 80, H / 2 + 60, 160, 40, '🏠 메인으로', '#6080e8', '#101828');
-    ctx.textAlign = 'left';
+    rows.forEach(([ic, k, v], i) => {
+        const ry = y + 100 + i * 24;
+        drawIcon(ctx, ic, x + 36, ry - 2, 16);
+        pixText(ctx, k, x + 60, ry + 11, 12, '#c2d0dc');
+        pixText(ctx, v, x + w - 36, ry + 11, 12, '#f4f4f4', 'right');
+    });
+    _drawButton(ctx, W / 2 - 80, H / 2 + 60, 160, 40, '메인으로', '#73eff7', '#29366f', { icon: 'home' });
 }
 
 // ── 공통 버튼 렌더링 ───────────────────────────────────
@@ -314,27 +246,13 @@ export function handleDeadClick(mx, my) {
 // ── 일시정지 메뉴 오버레이 ──────────────────────────────
 const PX = W / 2 - 100, PY = H / 2 - 95;  // 패널 좌상단
 export function renderPauseMenu(ctx) {
-    // 반투명 배경
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillStyle = 'rgba(10,8,24,0.65)';
     ctx.fillRect(0, 0, W, H);
-
-    // 패널
-    ctx.fillStyle = '#080818';
-    ctx.fillRect(PX, PY, 200, 190);
-    ctx.strokeStyle = '#5050c0';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(PX, PY, 200, 190);
-
-    // 제목
-    ctx.fillStyle = C.gold;
-    ctx.font = 'bold 18px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('⏸ 일시정지', W / 2, PY + 38);
-
-    // 버튼
-    _drawButton(ctx, PX + 30, PY + 60,  140, 38, '▶  계속하기', C.green,  '#0a1a0a');
-    _drawButton(ctx, PX + 30, PY + 112, 140, 38, '✕  포기하기', '#e04040','#1a0808');
-    ctx.textAlign = 'left';
+    pixWindow(ctx, PX, PY, 200, 172);
+    drawIcon(ctx, 'pause', PX + 40, PY + 22, 18);
+    pixText(ctx, '일시정지', W / 2 + 10, PY + 38, 18, '#ffcd75', 'center');
+    _drawButton(ctx, PX + 30, PY + 60,  140, 38, '계속하기', '#a7f070', '#257179', { icon: 'play' });
+    _drawButton(ctx, PX + 30, PY + 112, 140, 38, '포기하기', '#ef7d57', '#5d275d', { icon: 'cross' });
 }
 
 // 일시정지 메뉴 클릭 처리
@@ -348,38 +266,32 @@ export function handlePauseClick(mx, my) {
 
 // ── CLEAR 화면 ──────────────────────────────────────────
 export function renderClearScreen(ctx) {
-    // 배경
-    ctx.fillStyle = '#020008';
+    ctx.fillStyle = '#1a1c2c';
     ctx.fillRect(0, 0, W, H);
-    // 별
+    const t = performance.now() / 1000;
     for (let i = 0; i < 100; i++) {
-        const sx = (i * 137 + 20) % W;
-        const sy = (i * 89  + 10) % (H * 0.85);
-        ctx.fillStyle = `rgba(255,220,120,${0.3 + (i % 6) * 0.08})`;
-        ctx.fillRect(sx, sy, 1 + (i % 3 === 0 ? 1 : 0), 1 + (i % 3 === 0 ? 1 : 0));
+        if (Math.sin(t * 2 + i) < -0.3) continue;
+        ctx.fillStyle = i % 3 ? '#ffcd75' : '#f4f4f4';
+        ctx.fillRect((i * 137 + 20) % W, (i * 89 + 10) % (H * 0.85), i % 3 === 0 ? 4 : 2, i % 3 === 0 ? 4 : 2);
     }
-    // 제목
-    ctx.fillStyle = C.gold;
-    ctx.font = 'bold 40px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('✨ GAME CLEAR ✨', W / 2, H / 2 - 100);
-    ctx.fillStyle = '#c0a0ff';
-    ctx.font = '14px monospace';
-    ctx.fillText('어둠의 군주를 쓰러뜨렸다!', W / 2, H / 2 - 60);
-
-    // 결과
-    ctx.fillStyle = C.text;
-    ctx.font = '13px monospace';
-    const lines = [
-        `클리어 스테이지: ${stageLabel(state.stage)}`,
-        `이번 획득 재화: ${state.sessionGold} G`,
-        `적 처치: ${state.sessionKills} 마리`,
-        `총 사망: ${state.totalDeaths} 회`,
+    const w = 440, x = W / 2 - w / 2, y = H / 2 - 170;
+    pixWindow(ctx, x, y, w, 290, { border: '#ffcd75' });
+    drawIcon(ctx, 'boss', W / 2 - 20, y + 14, 40);
+    pixText(ctx, 'GAME CLEAR', W / 2, y + 86, 32, '#ffcd75', 'center', '#5d275d');
+    pixText(ctx, '어둠의 군주를 쓰러뜨렸다!', W / 2, y + 110, 13, '#c9a8ff', 'center');
+    const rows = [
+        ['flag', '클리어 스테이지', stageLabel(state.stage)],
+        ['coin', '획득 재화', `${state.sessionGold} G`],
+        ['atk', '적 처치', `${state.sessionKills}`],
+        ['kill', '총 사망', `${state.totalDeaths}`],
     ];
-    lines.forEach((l, i) => ctx.fillText(l, W / 2, H / 2 - 10 + i * 24));
-
-    _drawButton(ctx, W / 2 - 90, H / 2 + 90, 180, 40, '🏠 타이틀로 돌아가기', C.gold, '#1a1428');
-    ctx.textAlign = 'left';
+    rows.forEach(([ic, k, v], i) => {
+        const ry = y + 134 + i * 24;
+        drawIcon(ctx, ic, x + 50, ry - 2, 16);
+        pixText(ctx, k, x + 74, ry + 11, 12, '#c2d0dc');
+        pixText(ctx, v, x + w - 50, ry + 11, 12, '#f4f4f4', 'right');
+    })
+    _drawButton(ctx, W / 2 - 90, H / 2 + 90, 180, 40, '타이틀로', C.gold, '#29366f', { icon: 'home' });
 }
 
 // CLEAR 클릭 처리

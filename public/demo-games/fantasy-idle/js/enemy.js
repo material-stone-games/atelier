@@ -2,8 +2,8 @@
 import { FLOOR_Y, MOVE_SPEED, SCROLL_PX, ENEMY_ATK_MULT, toScreen } from './constants.js';
 import { ENEMY_DEFS } from './enemy-data.js';
 import { state } from './state.js';
-import { groundShadow } from './draw.js';
-import { drawEnemyArt } from './enemy-art.js';
+import { drawEnemyPix, pixShadow } from './pixel-actors.js';
+import { pixText } from './pixel.js';
 import { fx, addShake, addHitstop, spawnText, spawnProjectile, spawnRing } from './fx.js';
 import { sfx } from './sfx.js';
 
@@ -203,7 +203,7 @@ export class Enemy {
         }
         const x = this.x + this.knock + lunge;
 
-        groundShadow(ctx, x, FLOOR_Y, this.w * (this.fly ? 0.7 : 1.1) * (1 - dying * 0.6), this.fly ? 0.2 : 0.35);
+        pixShadow(ctx, x, FLOOR_Y, this.w * (this.fly ? 0.7 : 1.1) * (1 - dying * 0.6), this.fly ? 0.18 : 0.3);
 
         ctx.save();
         ctx.translate(x, this.y);
@@ -219,7 +219,7 @@ export class Enemy {
         const sq = this.squash * 0.18;
         ctx.scale((1 + sq) * appear, (1 - sq) * (0.6 + 0.4 * appear));
         const flash = this.hitFlash > 0 || (dying > 0 && dying < 0.15);
-        drawEnemyArt(ctx, this, this.t, flash, a, this.moving);
+        drawEnemyPix(ctx, this, this.t, flash, a, this.moving);
         ctx.restore();
 
         if (this._dead) return;
@@ -229,23 +229,16 @@ export class Enemy {
         if (this.hp < this.maxHp) {
             const bw = Math.max(26, this.w + 6);
             const bx = this.x - bw / 2;
-            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillStyle = '#1a1c2c';
             ctx.fillRect(bx - 1, top - 1, bw + 2, 6);
-            ctx.fillStyle = '#fff0b0';
+            ctx.fillStyle = '#f4f4f4';
             ctx.fillRect(bx, top, bw * Math.max(0, this.hpTrail / this.maxHp), 4);
-            ctx.fillStyle = '#e04040';
+            ctx.fillStyle = '#b13e53';
             ctx.fillRect(bx, top, bw * Math.max(0, this.hp / this.maxHp), 4);
         }
         // 보스 이름
         if (this.rank === 'boss' || this.rank === 'miniboss') {
-            ctx.fillStyle = this.rank === 'boss' ? '#ffcc00' : '#ff8800';
-            ctx.font = 'bold 10px monospace';
-            ctx.textAlign = 'center';
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-            ctx.strokeText(this.name, this.x, top - 4);
-            ctx.fillText(this.name, this.x, top - 4);
-            ctx.textAlign = 'left';
+            pixText(ctx, this.name, Math.round(this.x), Math.round(top - 4), 9, this.rank === 'boss' ? '#ffcd75' : '#ef7d57', 'center');
         }
     }
 }

@@ -1,5 +1,7 @@
 // 버튼 UI: 포인터 상태, 호버/눌림 애니메이션, 클릭 피드백
-import { shade, roundRect } from './draw.js';
+import { shade } from './draw.js';
+import { pixText, PIX_FONT } from './pixel.js';
+import { drawIcon } from './icons.js';
 import { spawnUiBurst } from './fx.js';
 import { sfx } from './sfx.js';
 
@@ -33,47 +35,43 @@ export function drawButton(ctx, x, y, w, h, label, color, bg, opts = {}) {
     anim.set(key, st);
 
     const t = performance.now() / 1000;
-    const pulse = opts.pulse ? (Math.sin(t * 4) + 1) / 2 : 0;
-    const base = bg ?? '#101020';
+    const pulse = opts.pulse && Math.sin(t * 5) > 0;
+    const base = bg ?? '#29366f';
+    const lift = Math.round(st.lift);
+    const dis = !!opts.disabled;
 
+    // 픽셀 버튼: 검정 외곽 → 테두리 색 → 윗면 밝게/아랫면 어둡게
     ctx.save();
-    ctx.translate(x + w / 2, y + h / 2);
-    ctx.scale(st.s, st.s);
-    ctx.translate(-w / 2, -h / 2);
+    ctx.translate(Math.round(x + w / 2), Math.round(y + h / 2));
+    ctx.scale(st.s > 1.03 ? 1.04 : st.s < 0.97 ? 0.96 : 1, st.s > 1.03 ? 1.04 : st.s < 0.97 ? 0.96 : 1);
+    ctx.translate(-Math.round(w / 2), -Math.round(h / 2) - lift);
+    ctx.fillStyle = 'rgba(10,8,24,0.55)';
+    ctx.fillRect(2, 4 + lift, w, h);
+    const edge = dis ? '#566c86' : hover || pulse ? '#f4f4f4' : color;
+    ctx.fillStyle = '#1a1c2c';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = edge;
+    ctx.fillRect(2, 2, w - 4, h - 4);
+    ctx.fillStyle = dis ? '#333c57' : shade(base, hover ? 0.25 : 0.1);
+    ctx.fillRect(4, 4, w - 8, h - 8);
+    ctx.fillStyle = dis ? '#333c57' : shade(base, hover ? 0.45 : 0.3);
+    ctx.fillRect(4, 4, w - 8, 2);
+    ctx.fillStyle = shade(base, -0.35);
+    ctx.fillRect(4, h - 6, w - 8, 2);
 
-    // 그림자
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    roundRect(ctx, 0, 3 - st.lift * 0.5, w, h, 6);
-    ctx.fill();
-
-    ctx.translate(0, -st.lift);
-    // 본체
-    if (hover || pulse) {
-        ctx.shadowColor = color;
-        ctx.shadowBlur = hover ? 14 : 6 + pulse * 10;
+    const size = opts.font ?? 12;
+    ctx.font = `bold ${size}px ${PIX_FONT}`;
+    const tw = label ? ctx.measureText(label).width : 0;
+    const iconSize = opts.icon ? Math.min(h - 12, size + 6) : 0;
+    const gap = opts.icon && label ? 6 : 0;
+    const left = Math.round(w / 2 - (tw + iconSize + gap) / 2);
+    if (opts.icon) {
+        ctx.save();
+        if (dis) ctx.globalAlpha = 0.4;
+        drawIcon(ctx, opts.icon, left, Math.round(h / 2 - iconSize / 2), iconSize);
+        ctx.restore();
     }
-    roundRect(ctx, 0, 0, w, h, 6);
-    const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, shade(base, hover ? 0.35 : 0.2));
-    g.addColorStop(1, shade(base, -0.2));
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = hover ? 2 : 1.5;
-    ctx.stroke();
-    // 윗면 광택
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    roundRect(ctx, 2, 2, w - 4, h * 0.45, 4);
-    ctx.fill();
-
-    ctx.fillStyle = hover ? shade(color, 0.35) : color;
-    ctx.font = `bold ${opts.font ?? 12}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, w / 2, h / 2 + 1);
-    ctx.textBaseline = 'alphabetic';
-    ctx.textAlign = 'left';
+    if (label) pixText(ctx, label, left + iconSize + gap, Math.round(h / 2 + size * 0.38), size, dis ? '#8b9bb4' : hover ? '#fff3b0' : color, 'left');
     ctx.restore();
 }
 

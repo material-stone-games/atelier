@@ -4,6 +4,8 @@ import { state, savePersist } from './state.js';
 import { UPGRADES, BRANCHES, canUnlock } from './upgrade-data.js';
 import { spawnUiBurst } from './fx.js';
 import { shade } from './draw.js';
+import { pixWindow, pixText } from './pixel.js';
+import { drawIcon } from './icons.js';
 import { sfx } from './sfx.js';
 
 const BASE_LEN = 68; // 기준 branchLen (전체 화면)
@@ -26,31 +28,13 @@ export function nodePos(upgrade, cx, cy, branchLen) {
 
 // 업그레이드 트리 전체 화면 렌더링
 export function renderUpgradeTree(ctx, cx = W / 2, cy = H / 2, branchLen = BASE_LEN) {
-    ctx.fillStyle = '#080818';
+    ctx.fillStyle = '#1a1c2c';
     ctx.fillRect(0, 0, W, H);
-
-    ctx.fillStyle = C.gold;
-    ctx.font = 'bold 16px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('⚔ 업그레이드 트리', cx, 22);
-
-    ctx.fillStyle = C.gold;
-    ctx.font = '13px monospace';
-    ctx.fillText(`💰 ${state.gold} G`, cx, 40);
-    ctx.textAlign = 'left';
-
+    pixText(ctx, '업그레이드 트리', cx, 24, 16, '#ffcd75', 'center');
+    pixText(ctx, `${state.gold} G`, cx, 42, 12, '#ffcd75', 'center');
     _renderTreeContents(ctx, cx, cy, branchLen);
-
-    // 닫기 버튼
-    ctx.fillStyle = '#303048';
-    ctx.fillRect(W - 80, H - 36, 70, 26);
-    ctx.strokeStyle = '#6060a0';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(W - 80, H - 36, 70, 26);
-    ctx.fillStyle = C.text;
-    ctx.font = '12px monospace';
-    ctx.fillText('닫기 [ESC]', W - 72, H - 17);
-    ctx.textAlign = 'left';
+    pixWindow(ctx, W - 96, H - 40, 88, 32);
+    pixText(ctx, '닫기 [ESC]', W - 52, H - 19, 11, '#f4f4f4', 'center');
 }
 
 // 트리 내용만 렌더링 (MAIN 화면 임베드용)
@@ -62,7 +46,7 @@ export function renderUpgradeTreeEmbed(ctx, cx, cy, branchLen) {
 function _renderTreeContents(ctx, cx, cy, branchLen) {
     const k = branchLen / BASE_LEN;
     const now = performance.now() / 1000;
-    ctx.lineCap = 'round';
+    ctx.lineCap = 'butt';
 
     // 1. 연결선 (requires 배열 기반)
     for (const up of UPGRADES) {
@@ -74,45 +58,33 @@ function _renderTreeContents(ctx, cx, cy, branchLen) {
             const p1 = prev ? nodePos(prev, cx, cy, branchLen) : { x: cx, y: cy };
             const owned = state.upgrades.includes(up.id);
             const open = !reqId || state.upgrades.includes(reqId);
-            ctx.strokeStyle = owned ? branch.color : open ? branch.color + '70' : '#33334a';
-            ctx.lineWidth = Math.max(1, (owned ? 4 : 2.5) * k);
-            if (owned) { ctx.shadowColor = branch.color; ctx.shadowBlur = 8 * k; }
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(pos.x, pos.y);
-            ctx.stroke();
-            ctx.shadowBlur = 0;
+            const lw = Math.max(2, Math.round((owned ? 4 : 2) * k));
+            ctx.strokeStyle = '#1a1c2c';
+            ctx.lineWidth = lw + 2;
+            ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(pos.x, pos.y); ctx.stroke();
+            ctx.strokeStyle = owned ? branch.color : open ? shade(branch.color, -0.45) : '#333c57';
+            ctx.lineWidth = lw;
+            ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(pos.x, pos.y); ctx.stroke();
         }
     }
 
-    // 2. 루트 노드
-    const rootR = Math.max(6, 16 * k);
-    const rg = ctx.createRadialGradient(cx - rootR * 0.3, cy - rootR * 0.3, 1, cx, cy, rootR);
-    rg.addColorStop(0, '#fff6c0'); rg.addColorStop(1, '#c89810');
-    ctx.fillStyle = rg;
-    ctx.shadowColor = C.gold; ctx.shadowBlur = 12 + Math.sin(now * 3) * 4;
-    ctx.beginPath();
-    ctx.arc(cx, cy, rootR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.textAlign = 'center';
-    if (rootR > 9) {
-        ctx.fillStyle = '#3a2800';
-        ctx.font = `bold ${Math.round(rootR * 0.6)}px monospace`;
-        ctx.fillText('★', cx, cy + rootR * 0.22);
-    }
+    // 2. 루트 노드 (금색 픽셀 타일 + 별)
+    const rootR = Math.round(Math.max(7, 16 * k));
+    const glow = Math.sin(now * 3) > 0;
+    ctx.fillStyle = '#1a1c2c';
+    ctx.fillRect(cx - rootR - 2, cy - rootR - 2, rootR * 2 + 4, rootR * 2 + 4);
+    ctx.fillStyle = glow ? '#fff3b0' : '#ffcd75';
+    ctx.fillRect(cx - rootR, cy - rootR, rootR * 2, rootR * 2);
+    ctx.fillStyle = '#c27c0e';
+    ctx.fillRect(cx - rootR + 2, cy - rootR + 2, rootR * 2 - 4, rootR * 2 - 4);
+    if (rootR >= 9) drawIcon(ctx, 'star', cx - rootR + 3, cy - rootR + 3, rootR * 2 - 6);
 
     // 3. 브랜치 레이블 (angle 기반 위치)
     for (const [, branch] of Object.entries(BRANCHES)) {
         const rad = (branch.angle * Math.PI) / 180;
         const lx = cx + Math.cos(rad) * (branchLen * 5.8);
         const ly = cy + Math.sin(rad) * (branchLen * 5.8);
-        ctx.fillStyle = branch.color;
-        ctx.font = `bold ${Math.max(8, Math.round(branchLen * 0.2))}px monospace`;
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-        ctx.strokeText(branch.label, lx, ly);
-        ctx.fillText(branch.label, lx, ly);
+        pixText(ctx, branch.label, lx, ly, Math.max(8, Math.round(branchLen * 0.2)), branch.color, 'center');
     }
 
     // 4. 노드 렌더링
@@ -144,49 +116,33 @@ function _renderTreeContents(ctx, cx, cy, branchLen) {
         const x = pos.x + jx, y = pos.y;
         const ready = !owned && unlocked && affordable;
 
-        // 구매 가능 노드: 맥동 링
-        if (ready) {
-            const pr = (now * 1.2) % 1;
-            ctx.strokeStyle = branch.color;
-            ctx.globalAlpha = 1 - pr;
-            ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(x, y, r + 2 + pr * 10 * Math.max(0.5, k), 0, Math.PI * 2); ctx.stroke();
-            ctx.globalAlpha = 1;
-        }
-
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
+        // 구매 가능 노드: 깜박이는 테두리
+        const half = Math.round(r);
+        const blink = ready && Math.floor(now * 3) % 2 === 0;
+        ctx.fillStyle = '#1a1c2c';
+        ctx.fillRect(x - half - 2, y - half - 2, half * 2 + 4, half * 2 + 4);
+        ctx.fillStyle = owned ? '#f4f4f4' : blink || hover ? '#f4f4f4' : unlocked ? branch.color : '#333c57';
+        ctx.fillRect(x - half, y - half, half * 2, half * 2);
+        const inner = owned ? shade(branch.color, -0.2) : unlocked ? (hover ? '#333c7a' : '#29366f') : '#20233a';
+        ctx.fillStyle = inner;
+        ctx.fillRect(x - half + 2, y - half + 2, half * 2 - 4, half * 2 - 4);
         if (owned) {
-            const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, 1, x, y, r);
-            g.addColorStop(0, shade(branch.color, 0.55)); g.addColorStop(1, shade(branch.color, -0.2));
-            ctx.fillStyle = g;
-            ctx.shadowColor = branch.color; ctx.shadowBlur = 10;
-        } else {
-            ctx.fillStyle = unlocked ? (hover ? '#3c3c5c' : '#2a2a44') : '#14141f';
+            ctx.fillStyle = shade(branch.color, 0.25);
+            ctx.fillRect(x - half + 2, y - half + 2, half * 2 - 4, 2);
         }
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = owned ? '#ffffff' : (unlocked ? branch.color : '#3a3a4c');
-        ctx.lineWidth = owned || hover ? 2 : 1.5;
-        ctx.stroke();
 
         // 아이콘 (잠긴 노드는 흑백·반투명)
-        if (r >= 5) {
+        if (half >= 5) {
             ctx.save();
             if (!owned && !unlocked) { ctx.globalAlpha = 0.35; ctx.filter = 'grayscale(1)'; }
             else if (!owned && !affordable) ctx.globalAlpha = 0.6;
-            ctx.font = `${Math.round(r * 1.05)}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
-            ctx.textBaseline = 'middle';
-            ctx.fillText(up.icon, x, y + r * 0.06);
+            const is = half * 2 - 6;
+            drawIcon(ctx, up.id, x - is / 2, y - is / 2, is);
             ctx.restore();
         }
-        if (!owned && unlocked && r >= 7) {
-            ctx.fillStyle = affordable ? C.gold : '#808080';
-            ctx.font = `bold ${Math.max(7, Math.round(r * 0.5))}px monospace`;
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-            ctx.strokeText(`${shortGold(cost)}G`, x, y + r + r * 0.65);
-            ctx.fillText(`${shortGold(cost)}G`, x, y + r + r * 0.65);
+        if (!owned && unlocked && half >= 7) {
+            pixText(ctx, `${shortGold(cost)}G`, x, y + half + Math.max(9, half * 0.7), Math.max(8, Math.round(half * 0.55)),
+                affordable ? '#ffcd75' : '#8b9bb4', 'center');
         }
     }
     ctx.textAlign = 'left';
@@ -215,40 +171,22 @@ export function renderTooltip(ctx, upgrade, nodeX, nodeY) {
     const cost = upgrade.cost;
     const affordable = state.gold >= cost;
 
-    const lines = [`${upgrade.icon} ${upgrade.name}`, upgrade.desc];
-    if (owned)          lines.push('✓ 보유 중');
-    else if (!unlocked) lines.push('🔒 이전 단계 필요');
-    else                lines.push(`비용: ${cost} G`);
-
-    const padX = 8, padY = 6, lineH = 16;
-    ctx.font = '11px monospace';
-    const bw = Math.max(130, ...lines.map(l => ctx.measureText(l).width + padX * 2 + 4));
-    const bh = padY * 2 + lineH * lines.length;
+    const status = owned ? ['보유 중', '#a7f070'] : !unlocked ? ['이전 단계 필요', '#8b9bb4']
+        : [`비용: ${cost} G`, affordable ? '#ffcd75' : '#ef7d57'];
+    ctx.font = 'bold 11px monospace';
+    const bw = Math.max(150, ctx.measureText(upgrade.desc).width + 36, ctx.measureText(upgrade.name).width + 64);
+    const bh = 78;
     let tx = nodeX + 22;
     let ty = nodeY - bh / 2;
     if (tx + bw > W - 4)  tx = nodeX - bw - 22;
     if (ty < 4)            ty = 4;
     if (ty + bh > H - 4)  ty = H - bh - 4;
 
-    ctx.fillStyle = 'rgba(10,10,30,0.94)';
-    ctx.beginPath(); ctx.roundRect(tx, ty, bw, bh, 6); ctx.fill();
-    ctx.strokeStyle = BRANCHES[upgrade.branch].color;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    lines.forEach((line, i) => {
-        let color = C.text;
-        if (i === 0) color = C.gold;
-        else if (i === 2) {
-            if (owned)          color = C.green;
-            else if (!unlocked) color = '#808080';
-            else color = affordable ? C.gold : '#c06060';
-        }
-        ctx.fillStyle = color;
-        ctx.font = `${i === 0 ? 'bold ' : ''}11px monospace`;
-        ctx.textAlign = 'left';
-        ctx.fillText(line, tx + padX, ty + padY + lineH * i + 11);
-    });
+    pixWindow(ctx, tx, ty, bw, bh, { border: BRANCHES[upgrade.branch].color });
+    drawIcon(ctx, upgrade.id, tx + 12, ty + 11, 18);
+    pixText(ctx, upgrade.name, tx + 36, ty + 25, 12, '#ffcd75');
+    pixText(ctx, upgrade.desc, tx + 14, ty + 46, 11, '#f4f4f4');
+    pixText(ctx, status[0], tx + 14, ty + 64, 11, status[1]);
 }
 
 // 클릭 이벤트 처리 → 구매
