@@ -40,12 +40,47 @@ function requireAdmin(request: CallableRequest<unknown>) {
   return auth;
 }
 
+// Posts and comments are public, so never fall back to the account's email.
+function publicAuthorName(auth: CallableRequest<unknown>["auth"] & {}): string {
+  const name = typeof auth.token.name === "string" ? auth.token.name.trim() : "";
+  return name.slice(0, 40) || "visitor";
+}
+
+const RATE_LIMITS = {
+  post: { minIntervalMs: 30_000, perHour: 10 },
+  comment: { minIntervalMs: 5_000, perHour: 60 },
+  like: { minIntervalMs: 300, perHour: 300 },
+} as const;
+
+/** Per-user throttle stored in rateLimits/{uid}; the collection has no client rules, so only Functions can touch it. */
+async function enforceRateLimit(auth: CallableRequest<unknown>["auth"] & {}, action: keyof typeof RATE_LIMITS): Promise<void> {
+  if (auth.token.admin === true) return;
+  const { minIntervalMs, perHour } = RATE_LIMITS[action];
+  const ref = db.doc(`rateLimits/${auth.uid}`);
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const now = Date.now();
+    const entry = snapshot.get(action) as { last?: number; windowStart?: number; count?: number } | undefined;
+    const last = Number(entry?.last ?? 0);
+    const inWindow = now - Number(entry?.windowStart ?? 0) < 60 * 60 * 1000;
+    const count = inWindow ? Number(entry?.count ?? 0) : 0;
+    if (now - last < minIntervalMs || count >= perHour) {
+      throw new HttpsError("resource-exhausted", "너무 자주 요청했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+    transaction.set(ref, { [action]: { last: now, windowStart: inWindow ? Number(entry?.windowStart) : now, count: count + 1 } }, { merge: true });
+  });
+}
+
 function normalizeTitle(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR");
 }
 
 function secretValue(): string {
-  return PLAY_SESSION_SECRET.value() || process.env.PLAY_SESSION_SECRET || "local-development-secret";
+  const secret = PLAY_SESSION_SECRET.value() || process.env.PLAY_SESSION_SECRET || "";
+  if (secret) return secret;
+  // A known fallback would let anyone mint play tokens, so only the emulator may use it.
+  if (process.env.FUNCTIONS_EMULATOR === "true") return "local-development-secret";
+  throw new HttpsError("internal", "플레이 세션 설정이 누락되었습니다.");
 }
 
 function createSessionToken(payload: { gameId: string; versionId: string; uid: string | null; level: AccessLevel; expiresAt: number }): string {
@@ -168,13 +203,14 @@ export const createPost = onCall({ region: "asia-northeast3", enforceAppCheck: t
   const text = typeof request.data?.text === "string" ? request.data.text.trim() : "";
   const hasImage = request.data?.hasImage === true;
   if (!text || text.length > 100) throw new HttpsError("invalid-argument", "게시글은 100자 이하로 작성해 주세요.");
+  await enforceRateLimit(auth, "post");
   const postRef = db.collection("posts").doc();
   const postId = postRef.id;
   await postRef.set({
     text,
     imagePath: hasImage ? `board-images/${postId}/image` : null,
     authorId: auth.uid,
-    authorName: String(auth.token.name ?? auth.token.email ?? "visitor"),
+    authorName: publicAuthorName(auth),
     likeCount: 0,
     commentCount: 0,
     monthKey: pageMonthKey(),
@@ -201,8 +237,9 @@ export const createComment = onCall({ region: "asia-northeast3", enforceAppCheck
     }
     depth = 1;
   }
+  await enforceRateLimit(auth, "comment");
   const commentRef = db.collection("comments").doc();
-  await commentRef.set({ targetType, targetId, parentId, depth, text, authorId: auth.uid, authorName: String(auth.token.name ?? auth.token.email ?? "visitor"), createdAt: FieldValue.serverTimestamp() });
+  await commentRef.set({ targetType, targetId, parentId, depth, text, authorId: auth.uid, authorName: publicAuthorName(auth), createdAt: FieldValue.serverTimestamp() });
   await target.ref.update({ commentCount: FieldValue.increment(1) });
   return { commentId: commentRef.id };
 });
@@ -212,6 +249,7 @@ export const toggleLike = onCall({ region: "asia-northeast3", enforceAppCheck: t
   const targetType: TargetType = request.data?.targetType === "game" ? "game" : "post";
   const targetId = typeof request.data?.targetId === "string" ? request.data.targetId : "";
   if (!targetId) throw new HttpsError("invalid-argument", "좋아요 대상을 확인해 주세요.");
+  await enforceRateLimit(auth, "like");
   const targetRef = db.doc(`${targetType === "game" ? "games" : "posts"}/${targetId}`);
   const recordRef = db.doc(`likeRecords/${targetType}_${targetId}_${auth.uid}`);
   const result = await db.runTransaction(async (transaction) => {
