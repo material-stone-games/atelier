@@ -1,6 +1,6 @@
 // 게임 전역 상수 및 레트로 색상 팔레트
 // 게임 버전: 업데이트를 배포할 때마다 올림 (타이틀 화면 하단에 표시)
-export const GAME_VERSION = '1.6';
+export const GAME_VERSION = '1.7';
 
 export const W = 800;
 export const H = 480;

@@ -1,7 +1,7 @@
 // 업그레이드 트리 UI: 그리드 기반 렌더링(배율 대응) + 클릭 구매 + 툴팁
 import { W, H, C } from './constants.js';
 import { state, savePersist } from './state.js';
-import { UPGRADES, BRANCHES, canUnlock, upgradeCost } from './upgrade-data.js';
+import { UPGRADES, BRANCHES, canUnlock } from './upgrade-data.js';
 import { spawnUiBurst } from './fx.js';
 import { shade } from './draw.js';
 import { sfx } from './sfx.js';
@@ -121,7 +121,7 @@ function _renderTreeContents(ctx, cx, cy, branchLen) {
         const pos = nodePos(up, cx, cy, branchLen);
         const owned = state.upgrades.includes(up.id);
         const unlocked = canUnlock(up);
-        const cost = upgradeCost(up);
+        const cost = up.cost;
         const affordable = state.gold >= cost;
         const branch = BRANCHES[up.branch];
         const hover = hoverId === up.id;
@@ -212,7 +212,7 @@ export function renderTooltip(ctx, upgrade, nodeX, nodeY) {
     if (!upgrade) return;
     const owned    = state.upgrades.includes(upgrade.id);
     const unlocked = canUnlock(upgrade);
-    const cost = upgradeCost(upgrade);
+    const cost = upgrade.cost;
     const affordable = state.gold >= cost;
 
     const lines = [`${upgrade.icon} ${upgrade.name}`, upgrade.desc];
@@ -256,7 +256,7 @@ export function handleTreeClick(mx, my, cx = W / 2, cy = H / 2, branchLen = BASE
     const up = findHoveredNode(mx, my, cx, cy, branchLen);
     if (!up) return false;
     const now = performance.now() / 1000;
-    const cost = upgradeCost(up);
+    const cost = up.cost;
     if (!state.upgrades.includes(up.id) && canUnlock(up) && state.gold >= cost) {
         state.gold -= cost;
         state.upgrades.push(up.id);

@@ -51,15 +51,6 @@ export function getStats() {
     return s;
 }
 
-// 강화 비용: 이미 산 강화 수에 따라 오름 → 한 판 수입으로 한두 개씩 사게 됨
-// 노드의 cost 값은 단계 구분용 (깊은 단계일수록 조금 더 비쌈)
-const TIER_FACTOR = { 10: 1, 40: 1.15, 150: 1.3, 250: 1.4, 500: 1.5, 800: 1.6, 1500: 1.8 };
-const COST_BASE = 4;
-const COST_POW = 2.2;
-export function upgradeCost(up) {
-    return Math.round((TIER_FACTOR[up.cost] ?? 1) * COST_BASE * Math.pow(state.upgrades.length + 1, COST_POW));
-}
-
 // 해금 조건: requires 배열의 모든 선행 노드 보유 시 해금
 export function canUnlock(upgrade) {
     if (!upgrade.requires || upgrade.requires.length === 0) return true;
