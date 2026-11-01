@@ -94,11 +94,11 @@ async function loadProfile(user: User): Promise<UserProfile | null> {
   };
 }
 
+// Plain sign-in asks only for the basic profile, so any Google account can log in without the
+// sensitive YouTube scope. That scope is requested later, only when a player verifies a subscription.
 export async function signInWithGoogle(): Promise<void> {
   if (!auth) throw new Error("Firebase 설정이 아직 연결되지 않았습니다.");
-  const provider = new GoogleAuthProvider();
-  provider.addScope("https://www.googleapis.com/auth/youtube.readonly");
-  await signInWithPopup(auth, provider);
+  await signInWithPopup(auth, new GoogleAuthProvider());
 }
 
 export async function verifyYoutubeSubscription(): Promise<{ verifiedUntil: string }> {
