@@ -75,8 +75,8 @@ h1 em, .hero h1 em, .page-heading h1 em, .game-detail-copy h1 em { color: var(--
 .game-card { min-width: 0; display: block; }
 .game-card-art { min-height: 310px; position: relative; overflow: hidden; background: radial-gradient(circle at 40% 35%, rgba(117,169,255,.42), transparent 19%), linear-gradient(140deg, #28373e, #121719 65%); background-size: cover; background-position: center; transition: transform .35s; }
 .game-card:hover .game-card-art { transform: scale(.98); }
-.game-card:nth-child(2n) .game-card-art { background: radial-gradient(circle at 60% 35%, rgba(255,113,68,.56), transparent 18%), linear-gradient(140deg, #493a36, #161719 66%); }
-.game-card:nth-child(3n) .game-card-art { background: radial-gradient(circle at 50% 48%, rgba(166,205,124,.45), transparent 19%), linear-gradient(140deg, #33403c, #131919 67%); }
+.game-card:nth-child(2n) .game-card-art { background-image: radial-gradient(circle at 60% 35%, rgba(255,113,68,.56), transparent 18%), linear-gradient(140deg, #493a36, #161719 66%); }
+.game-card:nth-child(3n) .game-card-art { background-image: radial-gradient(circle at 50% 48%, rgba(166,205,124,.45), transparent 19%), linear-gradient(140deg, #33403c, #131919 67%); }
 .card-number, .access-pill, .card-open { position: absolute; font-family: var(--mono); font-size: 9px; letter-spacing: .05em; }
 .card-number { left: 17px; top: 16px; color: rgba(255,255,255,.65); }
 .access-pill { right: 15px; top: 14px; border: 1px solid rgba(255,255,255,.25); padding: 6px 8px; background: rgba(12,15,17,.44); color: var(--cream); }
