@@ -25,7 +25,7 @@ npm run render
 3. `voice` — 대본을 데이터로 채우고 문장마다 TTS를 만든 뒤, 실제 음성 길이로 장면 타이밍(`public/data/timeline.json`)과 YouTube용 자막(`out/atelier-intro.srt`)을 만듭니다.
 4. `music` — 영상 길이에 맞춰 배경음악 `public/music/workbench-loop.wav`를 만듭니다(`scripts/make-music.mjs`). 녹음 샘플 없이 코드로 합성한 곡이라 저작권자가 따로 없습니다.
 
-결과물은 `out/atelier-intro.mp4`, `out/atelier-intro.srt`입니다. 게임이 새로 올라오거나 등급이 바뀌면 `prepare-all`부터 다시 돌리면 됩니다. `npm run studio`로 미리보기를 열 수 있습니다.
+결과물은 `out/atelier-intro.mp4`, `out/atelier-intro.srt`입니다. `npm run thumbnail`은 같은 작업대 스타일의 YouTube 썸네일(`out/atelier-thumbnail.jpg`, 1280×720)을 만듭니다. 썸네일에는 `benchGameId`와 `wipGameIds`의 게임이 들어갑니다. 게임이 새로 올라오거나 등급이 바뀌면 `prepare-all`부터 다시 돌리면 됩니다. `npm run studio`로 미리보기를 열 수 있습니다.
 
 ## 바꿀 수 있는 것 (`config.json`)
 

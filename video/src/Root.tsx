@@ -1,5 +1,6 @@
 import React from "react";
-import { Composition, staticFile, type CalculateMetadataFunction } from "remotion";
+import { Composition, Still, staticFile, type CalculateMetadataFunction } from "remotion";
+import { Thumbnail } from "./Thumbnail";
 import { AtelierIntro } from "./Video";
 import type { Game, Timeline, VideoProps } from "./types";
 
@@ -12,7 +13,13 @@ const calculateMetadata: CalculateMetadataFunction<VideoProps> = async () => {
   return { durationInFrames: timeline.totalFrames, fps: timeline.fps, props: { timeline, games: data.games } };
 };
 
+const thumbnailMetadata: CalculateMetadataFunction<{ games: Game[] }> = async () => {
+  const data = (await fetch(staticFile("data/games.json")).then((r) => r.json())) as { games: Game[] };
+  return { props: { games: data.games } };
+};
+
 export const Root: React.FC = () => (
+  <>
   <Composition
     id="AtelierIntro"
     component={AtelierIntro}
@@ -23,4 +30,6 @@ export const Root: React.FC = () => (
     defaultProps={{ timeline: null, games: [] } as VideoProps}
     calculateMetadata={calculateMetadata}
   />
+  <Still id="Thumbnail" component={Thumbnail} width={1920} height={1080} defaultProps={{ games: [] as Game[] }} calculateMetadata={thumbnailMetadata} />
+  </>
 );

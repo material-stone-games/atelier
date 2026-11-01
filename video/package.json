@@ -10,7 +10,8 @@
     "studio": "remotion studio src/index.ts",
     "render": "remotion render src/index.ts AtelierIntro out/atelier-intro.mp4",
     "typecheck": "tsc --noEmit",
-    "music": "node scripts/make-music.mjs"
+    "music": "node scripts/make-music.mjs",
+    "thumbnail": "remotion still src/index.ts Thumbnail out/atelier-thumbnail.jpg --image-format=jpeg --jpeg-quality=90 --scale=0.6667"
   },
   "dependencies": {
     "@remotion/cli": "4.0.536",
