@@ -328,6 +328,10 @@ canvas.addEventListener('pointerdown', e => {
     }
 });
 
+// iOS Safari는 터치의 pointerdown을 사용자 제스처로 인정하지 않아 손을 뗄 때 한 번 더 잠금 해제
+document.addEventListener('touchend', unlockAudio, { passive: true });
+document.addEventListener('click', unlockAudio);
+
 canvas.addEventListener('pointermove', e => {
     const { mx, my } = getCanvasPos(e);
     const prev = activePointers.get(e.pointerId);

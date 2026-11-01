@@ -12,6 +12,8 @@ export function unlockAudio() {
     if (!ac) {
         const Ctx = window.AudioContext || window.webkitAudioContext;
         if (!Ctx) return;
+        // iOS: 무음 스위치가 켜져 있어도 효과음이 나도록 미디어 재생 세션으로 지정 (Safari 17+)
+        try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* 무시 */ }
         ac = new Ctx();
         master = ac.createGain();
         master.gain.value = muted ? 0 : 0.55;
@@ -23,7 +25,15 @@ export function unlockAudio() {
         const d = noiseBuf.getChannelData(0);
         for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     }
-    if (ac.state === 'suspended') ac.resume();
+    // iOS는 백그라운드 복귀 후 'interrupted' 상태가 되므로 running이 아니면 모두 재개
+    if (ac.state !== 'running') {
+        ac.resume().catch(() => { /* 다음 입력에서 재시도 */ });
+        // iOS Safari는 제스처 안에서 실제로 소리를 한 번 재생해야 잠금이 풀림
+        const src = ac.createBufferSource();
+        src.buffer = ac.createBuffer(1, 1, ac.sampleRate);
+        src.connect(ac.destination);
+        src.start(0);
+    }
 }
 
 export function isMuted() { return muted; }
