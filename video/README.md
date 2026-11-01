@@ -6,9 +6,9 @@ Atelier 허브에 지금 올라가 있는 게임 데이터로 YouTube 소개 영
 
 - Node.js, Python
 - `pip install edge-tts`
+- 상위 폴더의 `../.env` (Firebase 프로젝트 ID, 버킷, Web API 키를 읽습니다)
 
 Edge TTS는 Microsoft의 공식 API가 아니라서 수익 창출 영상에 써도 되는지는 약관상 분명하지 않습니다. 수익화할 때는 Azure AI Speech(같은 목소리, 공식 약관)로 바꾸는 것을 검토하세요.
-- 상위 폴더의 `../.env` (Firebase 프로젝트 ID, 버킷, Web API 키를 읽습니다)
 
 ## 만들기
 
