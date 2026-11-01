@@ -2,7 +2,7 @@
 import { W, FLOOR_Y, MELEE_REACH, MOVE_SPEED, WAVE_GAP_M, WAVE_SIZE, toScreen } from './constants.js';
 import { state, savePersist } from './state.js';
 import { Enemy, DEATH_TIME } from './enemy.js';
-import { REGIONS, STAGE_LEN, STAGES_PER_REGION, FINAL_STAGE, regionOf, regionIndex, stageLabel, stageBossKind, stageScale } from './stages.js';
+import { REGIONS, STAGE_LEN, STAGES_PER_REGION, FINAL_STAGE, regionOf, regionIndex, stageLabel, stageBossKind, stageScale, pickStageEnemy } from './stages.js';
 import { getStats } from './upgrade-data.js';
 import { applyOnHit } from './artifacts.js';
 import { STRIKE_AT } from './player.js';
@@ -70,11 +70,9 @@ export function updateSpawn(dt) {
     if (state.scrolling) spawnAccum += MOVE_SPEED * dt;
     if (spawnAccum >= WAVE_GAP_M && !state.bossActive) {
         spawnAccum = 0;
-        const region = regionOf(state.stage);
         const n = WAVE_SIZE[0] + Math.floor(Math.random() * (WAVE_SIZE[1] - WAVE_SIZE[0] + 1));
         for (let i = 0; i < n; i++) {
-            const pool = Math.random() < 0.15 ? region.elites : region.normals;
-            const id = pool[Math.floor(Math.random() * pool.length)];
+            const id = pickStageEnemy(state.stage);
             state.enemies.push(new Enemy(id, W + 40 + i * 14 + Math.random() * 20, stageScale(state.stage)));
         }
     }
