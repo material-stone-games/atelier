@@ -1,5 +1,5 @@
 // 화면 렌더링: TITLE, MAIN HUB, DEAD RESULT
-import { W, H, C } from './constants.js';
+import { W, H, C, GAME_VERSION } from './constants.js';
 import { state, savePersist, SAVE_KEY } from './state.js';
 import { REGIONS, regionIndex, stageLabel } from './stages.js';
 import { drawArtifactIcon } from './artifact-ui.js';
@@ -108,7 +108,7 @@ export function renderTitle(ctx) {
     // 버전
     ctx.fillStyle = '#404050';
     ctx.font = '9px monospace';
-    ctx.fillText('v1.0  Fantasy Idle', W / 2, H - 10);
+    ctx.fillText(`v${GAME_VERSION}  Fantasy Idle`, W / 2, H - 10);
     ctx.textAlign = 'left';
 }
 
