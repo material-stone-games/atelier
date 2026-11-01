@@ -194,8 +194,8 @@ function HubPage({ games, posts }: { games: Game[]; posts: Post[] }) {
   return (
     <div className="hub-page page-container">
       <section className="page-heading">
-        <div><p className="eyebrow">THE PLAYABLE CATALOGUE</p><h1>Atelier <em>Hub</em></h1></div>
-        <p className="heading-note">Games, demos, and unfinished thoughts.<br />Pick a card and step inside.</p>
+        <div><h1>Atelier <em>Hub</em></h1></div>
+        <p className="heading-note">완성된 게임과 데모, 아직 다듬는 중인 실험까지.<br />마음에 드는 카드를 골라 들어가 보세요.</p>
       </section>
       <div className="hub-toolbar">
         <div className="filter-row" aria-label="장르 필터">
@@ -232,7 +232,7 @@ function GameCard({ game, index, freeThisWeek }: { game: Game; index: number; fr
 function CommunityPage({ auth, posts, onNotify }: { auth: AuthState; posts: Post[]; onNotify: (message: string) => void }) {
   return (
     <div className="community-page page-container">
-      <section className="page-heading compact"><div><p className="eyebrow">FIELD NOTES / COMMUNITY</p><h1>Community <em>board</em></h1></div><p className="heading-note">짧은 글과 한 장의 이미지로<br />작업실에 흔적을 남겨주세요.</p></section>
+      <section className="page-heading compact"><div><h1><em>Community</em></h1></div><p className="heading-note">짧은 글과 한 장의 이미지로<br />작업실에 흔적을 남겨주세요.</p></section>
       <PostComposer auth={auth} onNotify={onNotify} />
       <div className="post-list">{posts.map((post) => <PostCard key={post.id} post={post} auth={auth} onNotify={onNotify} />)}</div>
       <p className="retention-note"><span aria-hidden="true">✳</span> 게시글은 한 달 뒤 정리되며, 매월 좋아요 10개 이상인 1위 글은 작업실에 남습니다.</p>
