@@ -24,6 +24,39 @@ export function pixShadow(ctx, x, y, w, alpha = 0.3) {
 
 const snap = (v, u) => Math.round(v / u) * u;
 
+// ── 기사 idle 스프라이트 시트 (sprites/knight-idle.png, 42×43 × 4프레임) ──
+// 불러오기 전이나 실패하면 글자 격자로 그린 기존 기사로 그림
+const SHEET = { fw: 42, fh: 43, n: 4, footX: 21, px: 1.15, img: null, white: null };
+const IDLE_SEQ = [0, 1, 2, 1, 0, 3];   // 기본 → 내쉼 → 깃털 → 내쉼 → 기본 → 망토
+if (typeof Image !== 'undefined') {
+    const img = new Image();
+    img.onload = () => {
+        // 피격 깜박임용 흰 실루엣
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        const x = c.getContext('2d');
+        x.drawImage(img, 0, 0);
+        x.globalCompositeOperation = 'source-in';
+        x.fillStyle = '#ffffff';
+        x.fillRect(0, 0, c.width, c.height);
+        SHEET.img = img;
+        SHEET.white = c;
+    };
+    img.src = 'sprites/knight-idle.png';
+}
+
+function drawKnightSheet(ctx, o) {
+    const walk = !!o.walk, t = o.t ?? 0;
+    // 서 있을 때 6fps, 걸을 때 10fps로 숨쉬기 루프. 공격 중에는 기본 자세 고정
+    const seq = (o.atk ?? 0) > 0 ? 0 : IDLE_SEQ[Math.floor(t * (walk ? 10 : 6)) % IDLE_SEQ.length];
+    const P = SHEET.px;
+    const src = o.flash ? SHEET.white : SHEET.img;
+    const prev = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(src, seq * SHEET.fw, 0, SHEET.fw, SHEET.fh, -SHEET.footX * P, -SHEET.fh * P, SHEET.fw * P, SHEET.fh * P);
+    ctx.imageSmoothingEnabled = prev;
+}
+
 // ── 기사 ───────────────────────────────────────────
 // o: { t, walk, armA, swordA, lean, lunge, hurt, flash, dead, blink }
 export function drawKnightPix(ctx, x, footY, o = {}) {
@@ -48,6 +81,12 @@ export function drawKnightPix(ctx, x, footY, o = {}) {
         ctx.rotate(-e * Math.PI / 2);
     }
     ctx.rotate((o.lean ?? 0) - hurt * 0.15);
+
+    if (SHEET.img) {
+        drawKnightSheet(ctx, o);
+        ctx.restore();
+        return;
+    }
 
     const legKey = !walk ? 'stand' : (Math.sin(ph) > 0 ? 'walkA' : 'walkB');
     const legs = bake('kl_' + legKey, S.KNIGHT_LEGS[legKey]);
