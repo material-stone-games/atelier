@@ -245,7 +245,7 @@ h1 em, .hero h1 em, .page-heading h1 em, .game-detail-copy h1 em { color: var(--
 /* Home fits in one screen: header, hero, access cards and footer share the viewport height. */
 .app-shell.is-home { min-height: 100dvh; display: flex; flex-direction: column; }
 .is-home .page-main { flex: 1; min-height: 0; display: flex; }
-.is-home .site-footer { padding-top: 18px; padding-bottom: 22px; }
+.is-home .site-footer { width: 100%; max-width: none; padding-top: 18px; padding-bottom: 22px; }
 .home-page { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: clamp(20px, 4vh, 48px); padding: clamp(20px, 4vh, 56px) 0; }
 .home-page > section { width: 100%; }
 .home-page .hero { min-height: 0; padding-top: 0; padding-bottom: 0; }
