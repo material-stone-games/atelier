@@ -8,7 +8,7 @@
 - GitHub Pages: <https://material-stone-games.github.io/atelier/>
 - 홈: `/atelier/`
 - 허브: `/atelier/hub/`
-- 커뮤니티: `/atelier/hub/community`
+- 커뮤니티: `/atelier/community`
 - 게임 페이지: `/atelier/hub/game/:gameId`
 - 관리자: `/atelier/hub/admin`
 - Firebase Functions 리전: `asia-northeast3`
@@ -411,7 +411,7 @@ npm run preview
 
 - `http://127.0.0.1:4173/atelier/`
 - `http://127.0.0.1:4173/atelier/hub/`
-- `http://127.0.0.1:4173/atelier/hub/community`
+- `http://127.0.0.1:4173/atelier/community`
 - `http://127.0.0.1:4173/atelier/hub/admin`
 
 ## 8. 실제 Pages 배포
@@ -466,7 +466,7 @@ git push origin main
 - [ ] 상단 YouTube 링크가 실제 채널로 이동한다.
 - [ ] 상단 Discord 링크가 실제 커뮤니티 초대 링크로 이동한다.
 - [ ] `/atelier/hub/`를 직접 열고 새로고침해도 404가 아니다.
-- [ ] `/atelier/hub/community`를 직접 열고 새로고침해도 404가 아니다.
+- [ ] `/atelier/community`를 직접 열고 새로고침해도 404가 아니다.
 - [ ] `/atelier/hub/admin`을 직접 열어 비관리자 접근이 차단된다.
 - [ ] 모바일 폭에서 카드, 게시판, 업로드 폼, 게임 플레이어가 화면 밖으로 넘치지 않는다.
 
