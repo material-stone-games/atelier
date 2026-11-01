@@ -173,9 +173,9 @@ function HomePage() {
         </div>
       </section>
       <section className="home-cards section-frame">
-        <InfoCard index="01" title="Public builds" text="누구나 바로 플레이할 수 있는 공개 게임." tone="orange" />
-        <InfoCard index="02" title="Member demos" text="Google 로그인으로 한 단계 더 깊은 데모." tone="blue" />
-        <InfoCard index="03" title="Prototype room" text="채널 구독자에게 열리는 가장 이른 실험." tone="green" />
+        <InfoCard index="01" title="Public builds" text="누구나 바로 플레이할 수 있는 공개 게임." tone="public" />
+        <InfoCard index="02" title="Member demos" text="Google 로그인으로 한 단계 더 깊은 데모." tone="login" />
+        <InfoCard index="03" title="Prototype room" text="채널 구독자에게 열리는 가장 이른 실험." tone="subscriber" />
       </section>
     </div>
   );
@@ -216,7 +216,7 @@ function HubPage({ games, posts }: { games: Game[]; posts: Post[] }) {
 }
 
 function GameCard({ game, index, freeThisWeek }: { game: Game; index: number; freeThisWeek: boolean }) {
-  const accent = ["accent-orange", "accent-blue", "accent-green"][index % 3];
+  const accent = ["art-gem", "art-ember", "art-moss"][index % 3];
   return (
     <Link className={`game-card ${accent}`} to={`/hub/game/${game.id}`}>
       <div className="game-card-art" style={game.coverUrl ? { backgroundImage: `url(${game.coverUrl})` } : undefined}>
