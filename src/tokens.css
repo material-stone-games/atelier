@@ -1,0 +1,78 @@
+/*
+ * Atelier design tokens. Two layers:
+ * 1. Primitives: raw palette and scales. Components never use these directly.
+ * 2. Semantic tokens: what a value is for. styles.css reads only these.
+ * See docs/design-system.md for usage rules.
+ */
+:root {
+  /* ---- Primitives: colour ---- */
+  /* Stone: the dark neutrals of the workshop. */
+  --stone-950: #080a0c;
+  --stone-900: #101418;
+  --stone-850: #171c21;
+  --stone-800: #1b2023;
+  --stone-750: #20272d;
+  --stone-500: #7a858c;
+  --stone-400: #9aa2a8;
+  --stone-300: #bfc4c3;
+  --cream-100: #e8e7df;
+
+  /* Gem: the blue of the logo gem. 500 is the gem body, 400 its lit facet. */
+  --gem-200: #a9c0ff;
+  --gem-300: #8fb0ff;
+  --gem-400: #5f8bff;
+  --gem-500: #2350e0;
+  --gem-700: #1a3db0;
+
+  /* Ember: the laser's heat. A secondary accent, used sparingly. */
+  --ember-400: #ff7144;
+
+  --moss-400: #a6cd7c;
+  --violet-300: #b79bff;
+  --red-400: #ff5a5a;
+
+  /* ---- Primitives: type ---- */
+  --font-sans: "DM Sans", "Noto Sans KR", sans-serif;
+  --font-display: "Space Grotesk", "Noto Sans KR", sans-serif;
+  --font-mono: "DM Mono", "Noto Sans KR", monospace;
+
+  /* Nothing on the site goes below 12px. */
+  --fs-caption: 12px;
+  --fs-small: 13px;
+  --fs-body-sm: 14px;
+  --fs-body: 15px;
+  --fs-lead: 16px;
+
+  /* ---- Semantic: surfaces and text ---- */
+  --color-bg: var(--stone-900);
+  --color-bg-deep: var(--stone-950);
+  --color-surface: var(--stone-850);
+  --color-surface-raised: var(--stone-750);
+  --color-overlay: var(--stone-800);
+  --color-line: color-mix(in srgb, var(--cream-100) 13%, transparent);
+  --color-line-strong: color-mix(in srgb, var(--cream-100) 40%, transparent);
+  --color-text: var(--cream-100);
+  --color-text-soft: var(--stone-300);
+  --color-text-muted: var(--stone-400);
+  --color-text-placeholder: var(--stone-500);
+
+  /* ---- Semantic: brand accent (gem blue) ---- */
+  --accent: var(--gem-400);                 /* text, icons, underlines: 5.8:1 on bg */
+  --accent-strong: var(--gem-300);          /* hover state of accent text */
+  --accent-fill: var(--gem-500);            /* solid surfaces such as a hovered primary button */
+  --on-accent: #ffffff;                     /* text on accent-fill: 6.4:1 */
+  --accent-line: color-mix(in srgb, var(--gem-400) 50%, transparent);
+  --accent-soft: color-mix(in srgb, var(--gem-400) 13%, transparent);
+
+  /* ---- Semantic: secondary and status ---- */
+  --heat: var(--ember-400);                 /* likes, warnings, the laser */
+  --heat-soft: color-mix(in srgb, var(--ember-400) 10%, transparent);
+  --success: var(--moss-400);
+  --danger: var(--red-400);
+
+  /* ---- Semantic: access tiers ---- */
+  --tier-public: var(--moss-400);
+  --tier-login: var(--cream-100);
+  --tier-subscriber: var(--gem-400);
+  --tier-member: var(--violet-300);
+}
