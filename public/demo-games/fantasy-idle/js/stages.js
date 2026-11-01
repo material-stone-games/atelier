@@ -103,6 +103,6 @@ export function stageScale(stage) {
         hp: Math.pow(1.09, stage),
         atk: Math.pow(1.05, stage),
         def: Math.pow(1.03, stage),
-        drop: Math.pow(1.10, stage),
+        drop: 1, // 골드는 지역별 기본 드롭으로만 늘리고, 강화 비용이 구매 수에 따라 오름
     };
 }

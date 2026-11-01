@@ -1,7 +1,7 @@
 // 업그레이드 트리 UI: 그리드 기반 렌더링(배율 대응) + 클릭 구매 + 툴팁
 import { W, H, C } from './constants.js';
 import { state, savePersist } from './state.js';
-import { UPGRADES, BRANCHES, canUnlock } from './upgrade-data.js';
+import { UPGRADES, BRANCHES, canUnlock, upgradeCost } from './upgrade-data.js';
 import { spawnUiBurst } from './fx.js';
 import { shade } from './draw.js';
 import { sfx } from './sfx.js';
@@ -121,7 +121,8 @@ function _renderTreeContents(ctx, cx, cy, branchLen) {
         const pos = nodePos(up, cx, cy, branchLen);
         const owned = state.upgrades.includes(up.id);
         const unlocked = canUnlock(up);
-        const affordable = state.gold >= up.cost;
+        const cost = upgradeCost(up);
+        const affordable = state.gold >= cost;
         const branch = BRANCHES[up.branch];
         const hover = hoverId === up.id;
 
@@ -184,8 +185,8 @@ function _renderTreeContents(ctx, cx, cy, branchLen) {
             ctx.font = `bold ${Math.max(7, Math.round(r * 0.5))}px monospace`;
             ctx.lineWidth = 3;
             ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-            ctx.strokeText(`${up.cost}G`, x, y + r + r * 0.65);
-            ctx.fillText(`${up.cost}G`, x, y + r + r * 0.65);
+            ctx.strokeText(`${shortGold(cost)}G`, x, y + r + r * 0.65);
+            ctx.fillText(`${shortGold(cost)}G`, x, y + r + r * 0.65);
         }
     }
     ctx.textAlign = 'left';
@@ -203,17 +204,21 @@ export function findHoveredNode(mx, my, cx = W / 2, cy = H / 2, branchLen = BASE
     return null;
 }
 
+// 노드 아래 표시용 짧은 금액 (12.3k)
+const shortGold = g => g >= 10000 ? `${(g / 1000).toFixed(g >= 100000 ? 0 : 1)}k` : `${g}`;
+
 // 툴팁 렌더링
 export function renderTooltip(ctx, upgrade, nodeX, nodeY) {
     if (!upgrade) return;
     const owned    = state.upgrades.includes(upgrade.id);
     const unlocked = canUnlock(upgrade);
-    const affordable = state.gold >= upgrade.cost;
+    const cost = upgradeCost(upgrade);
+    const affordable = state.gold >= cost;
 
     const lines = [`${upgrade.icon} ${upgrade.name}`, upgrade.desc];
     if (owned)          lines.push('✓ 보유 중');
     else if (!unlocked) lines.push('🔒 이전 단계 필요');
-    else                lines.push(`비용: ${upgrade.cost} G`);
+    else                lines.push(`비용: ${cost} G`);
 
     const padX = 8, padY = 6, lineH = 16;
     ctx.font = '11px monospace';
@@ -251,8 +256,9 @@ export function handleTreeClick(mx, my, cx = W / 2, cy = H / 2, branchLen = BASE
     const up = findHoveredNode(mx, my, cx, cy, branchLen);
     if (!up) return false;
     const now = performance.now() / 1000;
-    if (!state.upgrades.includes(up.id) && canUnlock(up) && state.gold >= up.cost) {
-        state.gold -= up.cost;
+    const cost = upgradeCost(up);
+    if (!state.upgrades.includes(up.id) && canUnlock(up) && state.gold >= cost) {
+        state.gold -= cost;
         state.upgrades.push(up.id);
         savePersist();
         pops.set(up.id, now);
