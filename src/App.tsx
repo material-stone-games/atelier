@@ -402,18 +402,50 @@ function PlayScreen({ message, locked }: { message: string; locked: boolean }) {
 }
 
 function PlaySurface({ playUrl, playerRef }: { playUrl: string | null; playerRef: React.RefObject<HTMLDivElement | null> }) {
-  const [fullscreen, setFullscreen] = useState(false);
+  const [nativeFullscreen, setNativeFullscreen] = useState(false);
+  // iPhone Safari has no element fullscreen, so the player falls back to covering the viewport.
+  const [pseudoFullscreen, setPseudoFullscreen] = useState(false);
+  const fullscreen = nativeFullscreen || pseudoFullscreen;
   useEffect(() => {
-    const sync = () => setFullscreen(document.fullscreenElement === playerRef.current);
+    const sync = () => setNativeFullscreen(fullscreenElement() === playerRef.current);
     document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
+    document.addEventListener("webkitfullscreenchange", sync);
+    return () => { document.removeEventListener("fullscreenchange", sync); document.removeEventListener("webkitfullscreenchange", sync); };
   }, [playerRef]);
-  function toggleFullscreen() {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void playerRef.current?.requestFullscreen?.();
+  useEffect(() => {
+    if (!pseudoFullscreen) return;
+    document.documentElement.classList.add("player-locked");
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setPseudoFullscreen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => { document.documentElement.classList.remove("player-locked"); window.removeEventListener("keydown", onKey); };
+  }, [pseudoFullscreen]);
+  async function toggleFullscreen() {
+    if (pseudoFullscreen) { setPseudoFullscreen(false); return; }
+    if (fullscreenElement()) { await exitFullscreen(); return; }
+    const player = playerRef.current as FullscreenTarget | null;
+    if (!player) return;
+    // iPhone Safari can expose the methods while reporting fullscreen as unavailable.
+    if (!fullscreenEnabled()) { setPseudoFullscreen(true); return; }
+    try {
+      if (player.requestFullscreen) await player.requestFullscreen();
+      else if (player.webkitRequestFullscreen) await player.webkitRequestFullscreen();
+      else { setPseudoFullscreen(true); return; }
+    } catch {
+      setPseudoFullscreen(true);
+      return;
+    }
+    // Older WebKit returns nothing and fails silently, so check that fullscreen really started.
+    window.setTimeout(() => { if (!fullscreenElement()) setPseudoFullscreen(true); }, 500);
   }
-  return <div className="play-surface" ref={playerRef}><div className="play-surface-top"><span>ATELIER PLAYER / LIVE BUILD</span><button className="fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreen ? "전체화면 종료" : "전체화면"} title={fullscreen ? "전체화면 종료" : "전체화면"}><FullscreenIcon exit={fullscreen} /></button></div>{playUrl ? <iframe title="Atelier game build" src={playUrl} allow="fullscreen; gamepad; pointer-lock; autoplay" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock" /> : <div className="demo-frame"><span className="live-dot" /><strong>Build gateway connected</strong><p>Firebase 환경변수를 연결하면 업로드된 게임이 이 프레임에서 실행됩니다.</p></div>}</div>;
+  return <div className={`play-surface${pseudoFullscreen ? " is-pseudo-fullscreen" : ""}`} ref={playerRef}><div className="play-surface-top"><span>ATELIER PLAYER / LIVE BUILD</span><button className="fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreen ? "전체화면 종료" : "전체화면"} title={fullscreen ? "전체화면 종료" : "전체화면"}><FullscreenIcon exit={fullscreen} /></button></div>{playUrl ? <iframe title="Atelier game build" src={playUrl} allow="fullscreen; gamepad; pointer-lock; autoplay" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock" /> : <div className="demo-frame"><span className="live-dot" /><strong>Build gateway connected</strong><p>Firebase 환경변수를 연결하면 업로드된 게임이 이 프레임에서 실행됩니다.</p></div>}</div>;
 }
+
+// Safari before 16.4 (and iPadOS) only exposes the webkit-prefixed fullscreen API.
+type FullscreenTarget = HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+type FullscreenDocument = Document & { webkitFullscreenEnabled?: boolean; webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => Promise<void> | void };
+function fullscreenEnabled() { const doc = document as FullscreenDocument; return Boolean(doc.fullscreenEnabled ?? doc.webkitFullscreenEnabled); }
+function fullscreenElement() { const doc = document as FullscreenDocument; return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null; }
+async function exitFullscreen() { const doc = document as FullscreenDocument; if (doc.exitFullscreen) await doc.exitFullscreen(); else await doc.webkitExitFullscreen?.(); }
 
 function FullscreenIcon({ exit }: { exit: boolean }) {
   const corners = exit ? "M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" : "M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4";
