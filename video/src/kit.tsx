@@ -52,6 +52,8 @@ export const Mat: React.FC<{ children?: React.ReactNode; style?: React.CSSProper
       ].join(","),
       backgroundSize: `${u(12.5)}px ${u(12.5)}px, ${u(12.5)}px ${u(12.5)}px, ${u(2.5)}px ${u(2.5)}px, ${u(2.5)}px ${u(2.5)}px`,
       overflow: "hidden",
+      // Korean wraps between words, not mid-word.
+      wordBreak: "keep-all",
       ...style,
     }}
   >
@@ -156,9 +158,9 @@ export const Hand: React.FC<{ size: number; color?: string; style?: React.CSSPro
   <div style={{ fontFamily: FONT.hand, fontSize: u(size), color, lineHeight: 1.05, whiteSpace: "pre-line", ...style }}>{children}</div>
 );
 
-export const Subtitle: React.FC<{ text: string }> = ({ text }) => (
-  <div style={{ position: "absolute", left: 0, right: 0, bottom: u(2.6), display: "flex", justifyContent: "center", zIndex: 50 }}>
-    <div style={{ maxWidth: u(80), background: "#121416", color: "#fff", padding: `${u(0.5)}px ${u(1.4)}px`, fontFamily: FONT.body, fontWeight: 600, fontSize: u(2.1), lineHeight: 1.45, textAlign: "center", boxShadow: `0 ${u(0.3)}px 0 rgba(0,0,0,.25)`, textWrap: "balance" }}>
+export const Subtitle: React.FC<{ text: string; bottom?: number; maxWidth?: number; size?: number }> = ({ text, bottom = 2.6, maxWidth = 80, size = 2.1 }) => (
+  <div style={{ position: "absolute", left: 0, right: 0, bottom: u(bottom), display: "flex", justifyContent: "center", zIndex: 50 }}>
+    <div style={{ maxWidth: u(maxWidth), background: "#121416", color: "#fff", padding: `${u(0.5)}px ${u(1.4)}px`, fontFamily: FONT.body, fontWeight: 600, fontSize: u(size), lineHeight: 1.45, textAlign: "center", wordBreak: "keep-all", boxShadow: `0 ${u(0.3)}px 0 rgba(0,0,0,.25)`, textWrap: "balance" }}>
       {text}
     </div>
   </div>

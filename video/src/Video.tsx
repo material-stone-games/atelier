@@ -4,11 +4,14 @@ import { Audio } from "@remotion/media";
 import config from "../config.json";
 import { Subtitle } from "./kit";
 import { Bench, Can, Games, Hook, Outro, Tiers, Why, type SceneProps } from "./scenes";
+import { BenchTall, CanTall, GamesTall, HookTall, TiersTall, WhyTall } from "./scenes-tall";
 import type { Config, VideoProps } from "./types";
 
 const SCENES: Record<string, React.FC<SceneProps>> = { hook: Hook, why: Why, can: Can, games: Games, bench: Bench, tiers: Tiers };
+const SCENES_TALL: Record<string, React.FC<SceneProps>> = { hook: HookTall, why: WhyTall, can: CanTall, games: GamesTall, bench: BenchTall, tiers: TiersTall };
 
-export const AtelierIntro: React.FC<VideoProps> = ({ timeline, games }) => {
+export const AtelierIntro: React.FC<VideoProps> = ({ timeline, games, layout = "wide" }) => {
+  const tall = layout === "tall";
   if (!timeline) return <AbsoluteFill style={{ background: "#26342e" }} />;
   const cfg = config as Config;
   const fetchedDate = new Date(timeline.fetchedAt).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).replace(/\.\s?$/, "");
@@ -21,7 +24,7 @@ export const AtelierIntro: React.FC<VideoProps> = ({ timeline, games }) => {
           return [titles.slice(0, 4).join(" · "), titles.slice(4).join(" · ")].filter(Boolean);
         }
         if (text === "{voice}") {
-          return [cfg.tts.engine === "supertonic" ? `Supertonic (Supertone) · ${cfg.tts.voice} · AI 음성` : `Microsoft Edge TTS · ${cfg.tts.voice} · AI 음성`];
+          return [cfg.tts.engine === "supertonic" ? "Supertonic (Supertone) · AI 음성" : "Microsoft Edge TTS · AI 음성", cfg.tts.voice];
         }
         return [text.replace("{fetchedDate}", fetchedDate)];
       }),
@@ -41,11 +44,11 @@ export const AtelierIntro: React.FC<VideoProps> = ({ timeline, games }) => {
   return (
     <AbsoluteFill style={{ background: "#26342e" }}>
       {timeline.scenes.map((scene) => {
-        const Component = SCENES[scene.id];
+        const Component = (tall ? SCENES_TALL : SCENES)[scene.id];
         return (
           <Sequence key={scene.id} from={scene.from} durationInFrames={scene.frames} name={scene.id}>
             {scene.id === "outro" ? (
-              <Outro scene={scene} games={games} config={cfg} credits={credits} closing="해보시고, 한마디 남겨주세요." siteUrl={cfg.siteUrl} />
+              <Outro scene={scene} games={games} config={cfg} credits={credits} closing="해보시고, 한마디 남겨주세요." siteUrl={cfg.siteUrl} tall={tall} />
             ) : (
               <Component scene={scene} games={games} config={cfg} />
             )}
@@ -59,7 +62,7 @@ export const AtelierIntro: React.FC<VideoProps> = ({ timeline, games }) => {
       ))}
       {lines.map((line) => (
         <Sequence key={`s${line.from}`} from={line.from} durationInFrames={line.frames + 6} name="subtitle">
-          <Subtitle text={line.sub} />
+          {tall ? <Subtitle text={line.sub} bottom={23} maxWidth={48} size={2.4} /> : <Subtitle text={line.sub} />}
         </Sequence>
       ))}
       {cfg.music ? (

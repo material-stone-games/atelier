@@ -11,7 +11,9 @@
     "render": "remotion render src/index.ts AtelierIntro out/atelier-intro.mp4",
     "typecheck": "tsc --noEmit",
     "music": "node scripts/make-music.mjs",
-    "thumbnail": "remotion still src/index.ts Thumbnail out/atelier-thumbnail.jpg --image-format=jpeg --jpeg-quality=90 --scale=0.6667"
+    "thumbnail": "remotion still src/index.ts Thumbnail out/atelier-thumbnail.jpg --image-format=jpeg --jpeg-quality=90 --scale=0.6667",
+    "render:reel": "remotion render src/index.ts AtelierReel out/atelier-reel.mp4",
+    "reel-cover": "remotion still src/index.ts ReelCover out/atelier-reel-cover.jpg --image-format=jpeg --jpeg-quality=90"
   },
   "dependencies": {
     "@remotion/cli": "4.0.536",

@@ -1,21 +1,21 @@
 import React from "react";
-import { interpolate, Sequence, useCurrentFrame } from "remotion";
+import { interpolate, Sequence, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOR, Drop, Fade, FONT, Hand, Mat, Paper, Polaroid, Ruler, Sfx, Stroke, TIER, u } from "./kit";
 import type { AccessLevel, Config, Game, Scene, Spot } from "./types";
 
 export type SceneProps = { scene: Scene; games: Game[]; config: Config };
 
 /** Frame (relative to the scene) where narration line i starts; `at` is a fraction into that line. */
-const cue = (scene: Scene, i: number, at = 0) => {
+export const cue = (scene: Scene, i: number, at = 0) => {
   const line = scene.lines[Math.min(i, scene.lines.length - 1)];
   return line.from - scene.from + Math.round(line.frames * at);
 };
-const lineEnd = (scene: Scene, i: number) => cue(scene, i) + scene.lines[i].frames;
+export const lineEnd = (scene: Scene, i: number) => cue(scene, i) + scene.lines[i].frames;
 
-const benchOf = (games: Game[], config: Config) => games.find((g) => g.id === config.benchGameId);
-const shelfOf = (games: Game[], config: Config) => games.filter((g) => g.id !== config.benchGameId);
+export const benchOf = (games: Game[], config: Config) => games.find((g) => g.id === config.benchGameId);
+export const shelfOf = (games: Game[], config: Config) => games.filter((g) => g.id !== config.benchGameId);
 
-const Kicker: React.FC<{ children: React.ReactNode; color?: string }> = ({ children, color = COLOR.pencil }) => (
+export const Kicker: React.FC<{ children: React.ReactNode; color?: string }> = ({ children, color = COLOR.pencil }) => (
   <div style={{ fontFamily: FONT.mono, fontSize: u(1.2), letterSpacing: "0.14em", color }}>{children}</div>
 );
 
@@ -52,12 +52,12 @@ export const Hook: React.FC<SceneProps> = ({ scene, games, config }) => {
 };
 
 /* ---------- 2. Why ---------- */
-const FlowBox: React.FC<{ children: React.ReactNode; hot?: boolean }> = ({ children, hot }) => (
+export const FlowBox: React.FC<{ children: React.ReactNode; hot?: boolean }> = ({ children, hot }) => (
   <span style={{ border: `${u(0.2)}px solid ${hot ? COLOR.marker : COLOR.ink}`, color: hot ? COLOR.markerDark : COLOR.ink, borderRadius: u(0.6), padding: `0 ${u(1.2)}px` }}>{children}</span>
 );
-const Arrow = () => <span style={{ color: COLOR.pencil }}>→</span>;
-const flowRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: u(1.4), fontFamily: FONT.hand, fontSize: u(3.8), color: COLOR.ink, whiteSpace: "nowrap" };
-const flowLabel: React.CSSProperties = { fontFamily: FONT.mono, fontSize: u(1.2), letterSpacing: "0.1em", color: COLOR.pencil, width: u(11) };
+export const Arrow = () => <span style={{ color: COLOR.pencil }}>→</span>;
+export const flowRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: u(1.4), fontFamily: FONT.hand, fontSize: u(3.8), color: COLOR.ink, whiteSpace: "nowrap" };
+export const flowLabel: React.CSSProperties = { fontFamily: FONT.mono, fontSize: u(1.2), letterSpacing: "0.1em", color: COLOR.pencil, width: u(11) };
 
 export const Why: React.FC<SceneProps> = ({ scene }) => {
   const frame = useCurrentFrame();
@@ -94,7 +94,7 @@ export const Why: React.FC<SceneProps> = ({ scene }) => {
 };
 
 /* ---------- 3. What you can do ---------- */
-const ActionCard: React.FC<{ icon: string; iconColor?: string; title: string; text: string }> = ({ icon, iconColor = COLOR.ink, title, text }) => (
+export const ActionCard: React.FC<{ icon: string; iconColor?: string; title: string; text: string }> = ({ icon, iconColor = COLOR.ink, title, text }) => (
   <Paper style={{ width: u(23), padding: `${u(2.4)}px ${u(2)}px ${u(2)}px` }}>
     <div style={{ fontFamily: FONT.mono, fontSize: u(4), lineHeight: 1, color: iconColor }}>{icon}</div>
     <div style={{ fontFamily: FONT.heavy, fontWeight: 900, fontSize: u(2.9), marginTop: u(1.2) }}>{title}</div>
@@ -127,10 +127,10 @@ export const Can: React.FC<SceneProps> = ({ scene }) => (
 );
 
 /* ---------- 4. Games on the shelf ---------- */
-const TierChip: React.FC<{ level: AccessLevel }> = ({ level }) => (
+export const TierChip: React.FC<{ level: AccessLevel }> = ({ level }) => (
   <span style={{ fontFamily: FONT.mono, fontSize: u(1.15), color: "#fff", background: TIER[level].ink === "#1d2124" ? COLOR.ink : TIER[level].ink, padding: `${u(0.15)}px ${u(0.8)}px`, borderRadius: u(0.3) }}>{TIER[level].label}</span>
 );
-const Tag: React.FC<{ children: React.ReactNode; hot?: boolean }> = ({ children, hot }) => (
+export const Tag: React.FC<{ children: React.ReactNode; hot?: boolean }> = ({ children, hot }) => (
   <span style={{ fontFamily: FONT.body, fontSize: u(1.25), padding: `${u(0.1)}px ${u(0.7)}px`, borderRadius: u(0.3), border: hot ? "none" : "1px solid rgba(29,33,36,.3)", background: hot ? COLOR.marker : "transparent", color: hot ? "#fff" : COLOR.ink }}>{children}</span>
 );
 
@@ -268,19 +268,30 @@ export const Tiers: React.FC<SceneProps> = ({ scene, games }) => {
 };
 
 /* ---------- 7. Outro, then the same shot blurs and the credits roll ---------- */
-export const Outro: React.FC<SceneProps & { credits: { head: string; body: string[] }[]; closing: string; siteUrl: string }> = ({ scene, games, config, credits, closing, siteUrl }) => {
+export const Outro: React.FC<SceneProps & { credits: { head: string; body: string[] }[]; closing: string; siteUrl: string; tall?: boolean }> = ({ scene, games, config, credits, closing, siteUrl, tall = false }) => {
   const frame = useCurrentFrame();
+  const { height } = useVideoConfig();
   const blurAt = (scene.blurAt ?? scene.frames) - scene.from;
   const rollAt = (scene.rollAt ?? scene.frames) - scene.from;
   const rollFrames = scene.rollFrames ?? 1;
   const blur = interpolate(frame - blurAt, [0, 42], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const corners = shelfOf(games, config).slice(1, 5);
-  const spots = [
-    { left: 3, top: 4, rotate: -6 },
-    { left: 79, top: 6, rotate: 5 },
-    { left: 6, top: 32, rotate: 4 },
-    { left: 77, top: 31, rotate: -4 },
-  ];
+  // Wide frame is 100u x 56.25u; the tall (Reels) frame is 56.25u x 100u.
+  const spots = tall
+    ? [
+        { left: 3, top: 12.5, rotate: -6 },
+        { left: 30, top: 13.5, rotate: 5 },
+        { left: 4, top: 52, rotate: 4 },
+        { left: 29, top: 51, rotate: -4 },
+      ]
+    : [
+        { left: 3, top: 4, rotate: -6 },
+        { left: 79, top: 6, rotate: 5 },
+        { left: 6, top: 32, rotate: 4 },
+        { left: 77, top: 31, rotate: -4 },
+      ];
+  const label = tall ? { left: 5, top: 31.5, width: 46 } : { left: 25, top: 15, width: 50 };
+  const bodySize = tall ? 1.7 : 1.9;
 
   // Credits are laid out with fixed rows so the roll can stop exactly on the closing line.
   const HEAD = u(2.4), ROW = u(3.1), GAP = u(3.4);
@@ -294,7 +305,7 @@ export const Outro: React.FC<SceneProps & { credits: { head: string; body: strin
     y += GAP;
   }
   const closingY = y + u(2);
-  const roll = interpolate(frame - rollAt, [0, rollFrames], [1080 + u(2), 540 - closingY - u(3)], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const roll = interpolate(frame - rollAt, [0, rollFrames], [height + u(2), height / 2 - closingY - u(3)], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   return (
     <>
@@ -303,10 +314,10 @@ export const Outro: React.FC<SceneProps & { credits: { head: string; body: strin
           <Ruler />
           {corners.map((game, i) => game.cover ? (
             <Drop key={game.id} at={2 + i * 3} sound={i === 0} rotate={spots[i].rotate} style={{ left: u(spots[i].left), top: u(spots[i].top) }}>
-              <Polaroid src={game.cover} width={18} caption={game.title} tape={false} captionSize={2} />
+              <Polaroid src={game.cover} width={tall ? 22 : 18} caption={game.title} tape={false} captionSize={2} />
             </Drop>
           ) : null)}
-          <Drop at={8} rotate={-0.8} style={{ left: u(25), top: u(15), width: u(50) }}>
+          <Drop at={8} rotate={-0.8} style={{ left: u(label.left), top: u(label.top), width: u(label.width) }}>
             <Paper style={{ padding: u(3), textAlign: "center" }}>
               <div style={{ fontFamily: FONT.heavy, fontWeight: 900, fontSize: u(4), lineHeight: 1.25 }}>만드는 대로<br />계속 올릴게요.</div>
               <Hand size={3} color={COLOR.markerDark} style={{ marginTop: u(1) }}>해보시고, 한마디 남겨주세요!</Hand>
@@ -316,7 +327,7 @@ export const Outro: React.FC<SceneProps & { credits: { head: string; body: strin
       </div>
       <div style={{ position: "absolute", left: 0, right: 0, top: 0, transform: `translateY(${roll}px)`, color: "#f2f1ea", textAlign: "center", textShadow: "0 2px 10px rgba(0,0,0,.65)", opacity: frame >= rollAt ? 1 : 0 }}>
         {rows.map((row, i) => (
-          <div key={i} style={{ position: "absolute", left: 0, right: 0, top: row.y, fontFamily: row.kind === "head" ? FONT.mono : row.kind === "title" ? FONT.heavy : FONT.body, fontSize: row.kind === "head" ? u(1.3) : row.kind === "title" ? u(3.6) : u(1.9), fontWeight: row.kind === "title" ? 900 : 500, letterSpacing: row.kind === "head" ? "0.2em" : undefined, opacity: row.kind === "head" ? 0.7 : 1 }}>{row.text}</div>
+          <div key={i} style={{ position: "absolute", left: 0, right: 0, top: row.y, fontFamily: row.kind === "head" ? FONT.mono : row.kind === "title" ? FONT.heavy : FONT.body, fontSize: row.kind === "head" ? u(1.3) : row.kind === "title" ? u(3.6) : u(bodySize), fontWeight: row.kind === "title" ? 900 : 500, letterSpacing: row.kind === "head" ? "0.2em" : undefined, opacity: row.kind === "head" ? 0.7 : 1 }}>{row.text}</div>
         ))}
         <div style={{ position: "absolute", left: 0, right: 0, top: closingY }}>
           <div style={{ fontFamily: FONT.heavy, fontWeight: 900, fontSize: u(3.4) }}>{closing}</div>

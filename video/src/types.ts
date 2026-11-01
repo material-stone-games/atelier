@@ -38,4 +38,4 @@ export type Config = {
   credits: { head: string; body: string[] }[];
 };
 
-export type VideoProps = { timeline: Timeline | null; games: Game[] };
+export type VideoProps = { timeline: Timeline | null; games: Game[]; layout?: "wide" | "tall" };
