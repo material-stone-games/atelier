@@ -55,14 +55,15 @@ function seeded(seed: number) {
   return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
 }
 
-// Jitter shared corners by position so faces of the non-indexed polyhedron stay closed.
+// Jitter shared corners by position so faces stay closed, including the duplicated seam
+// vertices of a cylinder. Rounded integers keep -0 and 0 on the same key (toFixed would not).
 function roughen(geometry: THREE.BufferGeometry, amount: number, random: () => number) {
   const position = geometry.getAttribute("position");
   const offsets = new Map<string, THREE.Vector3>();
   const vertex = new THREE.Vector3();
   for (let i = 0; i < position.count; i++) {
     vertex.fromBufferAttribute(position, i);
-    const key = `${vertex.x.toFixed(3)},${vertex.y.toFixed(3)},${vertex.z.toFixed(3)}`;
+    const key = `${Math.round(vertex.x * 1000)},${Math.round(vertex.y * 1000)},${Math.round(vertex.z * 1000)}`;
     if (!offsets.has(key)) offsets.set(key, new THREE.Vector3(random() - .5, random() - .5, random() - .5).multiplyScalar(amount));
     vertex.add(offsets.get(key)!);
     position.setXYZ(i, vertex.x, vertex.y, vertex.z);
