@@ -81,13 +81,14 @@ function AppShell({ auth, games, posts }: { auth: AuthState; games: Game[]; post
   };
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${location.pathname === "/" ? "is-home" : ""}`}>
       <Header auth={auth} onNotify={notify} />
       <main className="page-main">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/hub" element={<HubPage games={games} posts={posts} />} />
-          <Route path="/hub/community" element={<CommunityPage auth={auth} posts={posts} onNotify={notify} />} />
+          <Route path="/community" element={<CommunityPage auth={auth} posts={posts} onNotify={notify} />} />
+          <Route path="/hub/community" element={<Navigate to="/community" replace />} />
           <Route path="/hub/game/:gameId" element={<GamePage auth={auth} games={games} onNotify={notify} />} />
           <Route path="/hub/admin" element={<AdminPage auth={auth} games={games} onNotify={notify} />} />
           <Route path="/privacy" element={<PrivacyPage />} />
@@ -122,9 +123,9 @@ function Header({ auth, onNotify }: { auth: AuthState; onNotify: (message: strin
     <header className="site-header">
       <div className="header-inner">
         <Link to="/" className="brand" aria-label="Atelier home" onClick={() => setMenuOpen(false)}>
-          <span className="brand-mark" aria-hidden="true"><span /></span>
+          <img className="brand-mark" src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" aria-hidden="true" />
           <span className="brand-copy">
-            <strong>atelier</strong>
+            <strong>Atelier</strong>
             <small>material stone games</small>
           </span>
         </Link>
@@ -135,7 +136,7 @@ function Header({ auth, onNotify }: { auth: AuthState; onNotify: (message: strin
         <nav className={`main-nav ${menuOpen ? "is-open" : ""}`} aria-label="주요 메뉴">
           <NavLink to="/" end onClick={() => setMenuOpen(false)}>Home</NavLink>
           <NavLink to="/hub" onClick={() => setMenuOpen(false)}>Hub</NavLink>
-          <NavLink to="/hub/community" onClick={() => setMenuOpen(false)}>Community</NavLink>
+          <NavLink to="/community" onClick={() => setMenuOpen(false)}>Community</NavLink>
         </nav>
         <div className={`header-actions ${menuOpen ? "is-open" : ""}`}>
           <a href={getConfiguredYoutubeUrl()} target="_blank" rel="noreferrer">YouTube <span aria-hidden="true">↗</span></a>
@@ -155,30 +156,21 @@ function HomePage() {
     <div className="home-page">
       <section className="hero section-frame">
         <div className="hero-copy">
-          <p className="eyebrow">MATERIAL STONE / DIGITAL WORKSHOP</p>
-          <h1>Play what we<br /><em>are making.</em></h1>
+          <h1>지금 만들고 있는 게임,<br /><em>먼저 플레이하세요.</em></h1>
           <p className="hero-lede">Atelier는 Material Stone Games가 만드는 게임과 작은 실험들을 모아두는 작업실입니다. 완성된 게임부터 아직 흔들리는 프로토타입까지, 지금 여기서 만나보세요.</p>
           <div className="hero-actions">
-            <Link className="button button-primary" to="/hub">Explore the hub <span aria-hidden="true">→</span></Link>
+            <Link className="button button-primary" to="/hub">게임 둘러보기 <span aria-hidden="true">→</span></Link>
             {discordUrl
-              ? <a className="button button-quiet" href={discordUrl} target="_blank" rel="noreferrer">Join the community</a>
-              : <Link className="button button-quiet" to="/hub/community">Join the community</Link>}
+              ? <a className="button button-quiet" href={discordUrl} target="_blank" rel="noreferrer">커뮤니티 참여</a>
+              : <Link className="button button-quiet" to="/community">커뮤니티 참여</Link>}
           </div>
-          <div className="hero-meta"><span className="live-dot" /> Open studio <span className="meta-divider" /> Seoul / worldwide</div>
         </div>
-        <div className="hero-art" aria-label="Atelier abstract mark" role="img">
+        <div className="hero-art" aria-hidden="true">
           <div className="orbit orbit-one" />
           <div className="orbit orbit-two" />
           <div className="stone-block stone-main"><span>MS</span></div>
           <div className="stone-block stone-small" />
-          <span className="art-label">01<br /><small>PLAY / MAKE / REPEAT</small></span>
-          <span className="art-coordinate">37°33'N<br />126°59'E</span>
         </div>
-      </section>
-      <section className="intro-strip section-frame">
-        <div className="strip-label">THE ATELIER NOTE</div>
-        <p>We make games to find the shape of an idea. The hub is where those ideas become playable.</p>
-        <Link to="/hub">Browse all projects <span aria-hidden="true">↗</span></Link>
       </section>
       <section className="home-cards section-frame">
         <InfoCard index="01" title="Public builds" text="누구나 바로 플레이할 수 있는 공개 게임." tone="orange" />
@@ -217,7 +209,7 @@ function HubPage({ games, posts }: { games: Game[]; posts: Post[] }) {
       <section className="community-banner">
         <div><p className="eyebrow">FROM THE COMMUNITY</p><h2>What are you playing?</h2><p>작업실의 소식과 플레이어들의 이야기를 나눠보세요.</p></div>
         <div className="banner-stat"><strong>{posts.length.toString().padStart(2, "0")}</strong><span>recent notes</span></div>
-        <Link className="button button-primary" to="/hub/community">Open board <span aria-hidden="true">→</span></Link>
+        <Link className="button button-primary" to="/community">Open board <span aria-hidden="true">→</span></Link>
       </section>
     </div>
   );
