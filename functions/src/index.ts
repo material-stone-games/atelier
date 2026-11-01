@@ -10,7 +10,7 @@ import { defineSecret, defineString } from "firebase-functions/params";
 import { logger } from "firebase-functions";
 import mime from "mime-types";
 import unzipper from "unzipper";
-import { type AccessLevel, isAccessLevel, weeklyRotationIds } from "./access.js";
+import { type AccessLevel, isAccessLevel, normalizeEmailList, weeklyRotationIds } from "./access.js";
 import { monthKeyBefore, pageMonthKey } from "./month.js";
 
 if (!getApps().length) initializeApp();
@@ -117,9 +117,34 @@ async function inWeeklyRotation(gameId: string): Promise<boolean> {
   return weeklyRotationIds(snapshot.docs.map((doc) => doc.id)).has(gameId);
 }
 
+/** Verified, lowercase email of the caller, or null when the account has none. */
+function verifiedEmail(auth: CallableRequest<unknown>["auth"]): string | null {
+  const email = auth?.token.email;
+  return typeof email === "string" && auth?.token.email_verified === true ? email.toLowerCase() : null;
+}
+
+// Private-game allowlists live apart from games/{id} so invitees never see each other's addresses.
+function allowlistRef(gameId: string) {
+  return db.doc(`gameAllowlists/${gameId}`);
+}
+
+async function onAllowlist(gameId: string, auth: CallableRequest<unknown>["auth"]): Promise<boolean> {
+  const email = verifiedEmail(auth);
+  if (!email) return false;
+  const emails = (await allowlistRef(gameId).get()).get("emails");
+  return Array.isArray(emails) && emails.includes(email);
+}
+
+/** Whether the caller may know a game exists; private games stay hidden from everyone off the list. */
+async function canSeeGame(game: DocumentSnapshot<DocumentData>, auth: CallableRequest<unknown>["auth"]): Promise<boolean> {
+  if (game.get("accessLevel") !== "private" || auth?.token.admin === true) return true;
+  return onAllowlist(game.id, auth);
+}
+
 async function canPlay(game: DocumentSnapshot<DocumentData>, request: CallableRequest<unknown>): Promise<boolean> {
   const level = game.get("accessLevel") as AccessLevel;
   if (level === "public") return true;
+  if (level === "private") return request.auth ? canSeeGame(game, request.auth) : false;
   if (level === "subscriber" && (await inWeeklyRotation(game.id))) return true;
   if (!request.auth) return false;
   if (request.auth.token.admin === true || level === "login") return true;
@@ -135,6 +160,19 @@ function readGameMeta(data: Record<string, unknown>) {
   if (!title || title.length > 80 || !accessLevel) throw new HttpsError("invalid-argument", "게임 제목과 접근 등급을 확인해 주세요.");
   if (description.length > MAX_DESCRIPTION_LENGTH) throw new HttpsError("invalid-argument", `설명은 ${MAX_DESCRIPTION_LENGTH}자 이하로 작성해 주세요.`);
   return { title, titleKey: normalizeTitle(title), description, genres, accessLevel };
+}
+
+function readAllowedEmails(data: Record<string, unknown>, accessLevel: AccessLevel): string[] | null {
+  if (accessLevel !== "private") return null;
+  const emails = normalizeEmailList(data.allowedEmails);
+  if (!emails) throw new HttpsError("invalid-argument", "공개할 이메일 목록을 확인해 주세요. (최대 100개)");
+  return emails;
+}
+
+/** Keeps gameAllowlists/{id} in step with the game: written for private games, removed otherwise. */
+async function saveAllowlist(gameId: string, emails: string[] | null): Promise<void> {
+  if (emails) await allowlistRef(gameId).set({ emails, updatedAt: FieldValue.serverTimestamp() });
+  else await allowlistRef(gameId).delete();
 }
 
 export const verifyYoutubeSubscription = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 2 }, async (request) => {
@@ -161,6 +199,7 @@ export const createOrUpdateGameDraft = onCall({ region: "asia-northeast3", enfor
   const auth = requireAdmin(request);
   const data = (request.data ?? {}) as Record<string, unknown>;
   const meta = readGameMeta(data);
+  const allowedEmails = readAllowedEmails(data, meta.accessLevel);
 
   let gameRef = data.existingGameId ? db.doc(`games/${String(data.existingGameId)}`) : null;
   let existing = gameRef ? await gameRef.get() : null;
@@ -194,7 +233,10 @@ export const createOrUpdateGameDraft = onCall({ region: "asia-northeast3", enfor
     payload.createdAt = FieldValue.serverTimestamp();
     payload.likeCount = 0;
   }
+  // Write the allowlist first so a game never turns private before its invitees are on file.
+  if (allowedEmails) await saveAllowlist(gameId, allowedEmails);
   await gameRef.set(payload, { merge: true });
+  if (!allowedEmails) await saveAllowlist(gameId, null);
   return { gameId, buildPath, coverPath };
 });
 
@@ -228,7 +270,7 @@ export const createComment = onCall({ region: "asia-northeast3", enforceAppCheck
   const parentId = typeof request.data?.parentId === "string" ? request.data.parentId : null;
   if (!targetId || !text || text.length > 50) throw new HttpsError("invalid-argument", "댓글은 50자 이하로 작성해 주세요.");
   const target = await db.doc(`${targetType === "game" ? "games" : "posts"}/${targetId}`).get();
-  if (!target.exists) throw new HttpsError("not-found", "댓글 대상이 존재하지 않습니다.");
+  if (!target.exists || (targetType === "game" && !(await canSeeGame(target, auth)))) throw new HttpsError("not-found", "댓글 대상이 존재하지 않습니다.");
   let depth: 0 | 1 = 0;
   if (parentId) {
     const parent = await db.doc(`comments/${parentId}`).get();
@@ -254,7 +296,7 @@ export const toggleLike = onCall({ region: "asia-northeast3", enforceAppCheck: t
   const recordRef = db.doc(`likeRecords/${targetType}_${targetId}_${auth.uid}`);
   const result = await db.runTransaction(async (transaction) => {
     const [target, record] = await Promise.all([transaction.get(targetRef), transaction.get(recordRef)]);
-    if (!target.exists) throw new HttpsError("not-found", "좋아요 대상을 찾을 수 없습니다.");
+    if (!target.exists || (targetType === "game" && !(await canSeeGame(target, auth)))) throw new HttpsError("not-found", "좋아요 대상을 찾을 수 없습니다.");
     const current = Number(target.get("likeCount") ?? 0);
     if (record.exists) {
       transaction.delete(recordRef);
@@ -302,11 +344,34 @@ export const deleteComment = onCall({ region: "asia-northeast3", enforceAppCheck
   return { deleted: replies.size + 1 };
 });
 
+/** Published private games the caller is invited to (admins get all of them). */
+export const listPrivateGames = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 3 }, async (request) => {
+  const auth = requireUser(request);
+  let gameIds: string[];
+  if (auth.token.admin === true) {
+    gameIds = (await db.collection("games").where("accessLevel", "==", "private").select().get()).docs.map((doc) => doc.id);
+  } else {
+    const email = verifiedEmail(auth);
+    if (!email) return { games: [] };
+    gameIds = (await db.collection("gameAllowlists").where("emails", "array-contains", email).select().get()).docs.map((doc) => doc.id);
+  }
+  if (!gameIds.length) return { games: [] };
+  const snapshots = await db.getAll(...gameIds.map((id) => db.doc(`games/${id}`)));
+  const games = snapshots
+    .filter((game) => game.exists && game.get("accessLevel") === "private" && game.get("buildStatus") === "published")
+    .map((game) => {
+      const { createdAt, updatedAt, ...data } = game.data() ?? {};
+      // Callables serialize Timestamps as plain objects, so send milliseconds instead.
+      return { ...data, id: game.id, createdAtMs: (createdAt as Timestamp | undefined)?.toMillis() ?? null, updatedAtMs: (updatedAt as Timestamp | undefined)?.toMillis() ?? null };
+    });
+  return { games };
+});
+
 export const getPlaySession = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 3, secrets: [PLAY_SESSION_SECRET] }, async (request) => {
   const gameId = typeof request.data?.gameId === "string" ? request.data.gameId : "";
   if (!gameId) throw new HttpsError("invalid-argument", "게임을 확인해 주세요.");
   const game = await db.doc(`games/${gameId}`).get();
-  if (!game.exists || game.get("buildStatus") !== "published") throw new HttpsError("not-found", "아직 공개되지 않은 빌드입니다.");
+  if (!game.exists || game.get("buildStatus") !== "published" || !(await canSeeGame(game, request.auth))) throw new HttpsError("not-found", "아직 공개되지 않은 빌드입니다.");
   if (!(await canPlay(game, request))) throw new HttpsError("permission-denied", "현재 계정에는 이 빌드를 플레이할 권한이 없습니다.");
   const level = game.get("accessLevel") as AccessLevel;
   const token = createSessionToken({ gameId, versionId: String(game.get("buildVersionId")), uid: request.auth?.uid ?? null, level, expiresAt: Date.now() + 2 * 60 * 60 * 1000 });
@@ -438,11 +503,15 @@ export const updateGameMeta = onCall({ region: "asia-northeast3", enforceAppChec
   const data = (request.data ?? {}) as Record<string, unknown>;
   const gameId = typeof data.gameId === "string" ? data.gameId : "";
   const meta = readGameMeta(data);
+  const allowedEmails = readAllowedEmails(data, meta.accessLevel);
   const gameRef = db.doc(`games/${gameId}`);
   if (!gameId || !(await gameRef.get()).exists) throw new HttpsError("not-found", "게임을 찾을 수 없습니다.");
   const duplicate = await db.collection("games").where("titleKey", "==", meta.titleKey).limit(2).get();
   if (duplicate.docs.some((doc) => doc.id !== gameId)) throw new HttpsError("already-exists", "같은 제목의 게임이 이미 있습니다.");
+  // Write the allowlist before the game turns private, and drop it only after the game has left private.
+  if (allowedEmails) await saveAllowlist(gameId, allowedEmails);
   await gameRef.update({ ...meta, updatedAt: FieldValue.serverTimestamp() });
+  if (!allowedEmails) await saveAllowlist(gameId, null);
   return { ok: true };
 });
 
@@ -466,6 +535,7 @@ export const deleteGame = onCall({ region: "asia-northeast3", enforceAppCheck: t
   await deleteDocs(await db.collection("comments").where("targetType", "==", "game").where("targetId", "==", gameId).get());
   await deleteDocs(await db.collection("likeRecords").where("targetType", "==", "game").where("targetId", "==", gameId).get());
   await gameRef.delete();
+  await allowlistRef(gameId).delete();
   logger.info("Deleted game", { gameId });
   return { ok: true };
 });

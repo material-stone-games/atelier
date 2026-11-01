@@ -1,6 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 
-export type AccessLevel = "public" | "login" | "subscriber" | "member";
+export type AccessLevel = "public" | "login" | "subscriber" | "member" | "private";
 export type UserRole = "user" | "admin";
 export type BuildStatus = "processing" | "published" | "failed";
 export type TargetType = "post" | "game";
@@ -75,6 +75,8 @@ export interface GameDraftInput {
   description: string;
   genres: string[];
   accessLevel: AccessLevel;
+  /** Only for private games: who may see and play it. */
+  allowedEmails?: string[];
   existingGameId?: string;
 }
 
@@ -84,6 +86,7 @@ export interface GameMetaInput {
   description: string;
   genres: string[];
   accessLevel: AccessLevel;
+  allowedEmails?: string[];
 }
 
 export interface StorageReport {

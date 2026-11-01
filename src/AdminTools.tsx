@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { AccessLevel, Game, StorageReport } from "./types";
-import { accessLabel } from "./lib/access";
-import { deleteGame, deleteStorageOrphans, getStorageReport, subscribeToAllGames, updateGameMeta } from "./lib/services";
+import { accessLabel, parseEmailList } from "./lib/access";
+import { deleteGame, deleteStorageOrphans, getGameAllowlist, getStorageReport, subscribeToAllGames, updateGameMeta } from "./lib/services";
 
 type Notify = (message: string) => void;
 
@@ -72,14 +72,27 @@ function GameEditor({ game, onDone, onNotify }: { game: Game; onDone: () => void
   const [description, setDescription] = useState(game.description);
   const [genres, setGenres] = useState(game.genres.join(", "));
   const [accessLevel, setAccessLevel] = useState<AccessLevel>(game.accessLevel);
+  const [allowedEmails, setAllowedEmails] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (game.accessLevel !== "private") return;
+    let alive = true;
+    getGameAllowlist(game.id)
+      .then((emails) => { if (alive) setAllowedEmails(emails.join("\n")); })
+      .catch((error) => onNotify(errorMessage(error, "공개 이메일 목록을 불러오지 못했습니다.")));
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.id, game.accessLevel]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!title.trim()) return onNotify("게임 제목을 입력해 주세요.");
+    const invitees = parseEmailList(allowedEmails);
+    if (accessLevel === "private" && invitees.invalid.length) return onNotify(`이메일 형식을 확인해 주세요: ${invitees.invalid.join(", ")}`);
     setSaving(true);
     try {
-      await updateGameMeta({ gameId: game.id, title: title.trim(), description: description.trim(), genres: genres.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 8), accessLevel });
+      await updateGameMeta({ gameId: game.id, title: title.trim(), description: description.trim(), genres: genres.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 8), accessLevel, allowedEmails: accessLevel === "private" ? invitees.emails : undefined });
       onNotify("게임 정보를 수정했습니다.");
       onDone();
     } catch (error) {
@@ -99,7 +112,9 @@ function GameEditor({ game, onDone, onNotify }: { game: Game; onDone: () => void
         <option value="login">Demo — Google login</option>
         <option value="subscriber">Prototype — YouTube subscriber</option>
         <option value="member">Early access — channel member</option>
+        <option value="private">Private — invited emails only</option>
       </select>
+      {accessLevel === "private" ? <textarea value={allowedEmails} onChange={(event) => setAllowedEmails(event.target.value)} placeholder={"friend@gmail.com\ntester@example.com"} aria-label="Invited emails" /> : null}
       <div className="manage-actions">
         <button className="button button-primary small" type="submit" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
         <button className="action-button" type="button" onClick={onDone} disabled={saving}>Cancel</button>

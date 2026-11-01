@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AuthState } from "../types";
-import { accessPermission, weekIndex, weeklyRotationIds } from "./access";
+import { accessPermission, parseEmailList, weekIndex, weeklyRotationIds } from "./access";
 
 const ids = Array.from({ length: 12 }, (_, index) => `game-${index}`);
 const anonymous: AuthState = { user: null, profile: null, isAdmin: false, isSubscriber: false, isMember: false, loading: false };
@@ -45,5 +45,28 @@ describe("access permission", () => {
     expect(accessPermission(game, { ...signedIn, isSubscriber: true }, rotation)).toEqual({ allowed: false, reason: "member" });
     expect(accessPermission(game, { ...signedIn, isMember: true }, rotation).allowed).toBe(true);
     expect(accessPermission(game, { ...signedIn, isAdmin: true }, rotation).allowed).toBe(true);
+  });
+
+  it("asks visitors to sign in before a private game", () => {
+    const game = { id: "secret", accessLevel: "private" as const };
+    expect(accessPermission(game, anonymous, rotation)).toEqual({ allowed: false, reason: "login" });
+    expect(accessPermission(game, signedIn, rotation).allowed).toBe(true);
+  });
+});
+
+describe("private game emails", () => {
+  it("normalizes and splits the invite list", () => {
+    expect(parseEmailList(" Friend@Gmail.com, tester@example.com\nfriend@gmail.com ; nope ")).toEqual({
+      emails: ["friend@gmail.com", "tester@example.com"],
+      invalid: ["nope"],
+    });
+  });
+
+  it("agrees with the server on which emails are valid", async () => {
+    const server = await import("../../functions/src/access");
+    const { emails } = parseEmailList("a@b.co, Someone@Example.com");
+    expect(server.normalizeEmailList(emails)).toEqual(emails);
+    expect(server.normalizeEmailList(["not-an-email"])).toBeNull();
+    expect(server.normalizeEmailList("a@b.co")).toBeNull();
   });
 });

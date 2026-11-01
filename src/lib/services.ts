@@ -31,7 +31,7 @@ import type {
   TargetType,
   UserProfile,
 } from "../types";
-import { isAccessLevel } from "./access";
+import { LISTED_ACCESS_LEVELS, isAccessLevel } from "./access";
 import { appConfig, hasFirebaseConfig } from "./config";
 import { auth, db, functions, storage } from "./firebase";
 
@@ -182,25 +182,62 @@ function mapComment(snapshot: { id: string; data: () => Record<string, unknown> 
   };
 }
 
+function updatedMillis(game: Game): number {
+  const value = game.updatedAt;
+  return value instanceof Date ? value.getTime() : value?.toMillis() ?? 0;
+}
+
+/** Private games the signed-in account is invited to; the rules keep them out of the listed query. */
+async function loadPrivateGames(): Promise<Game[]> {
+  if (!functions) return [];
+  type Row = Record<string, unknown> & { id: string; createdAtMs: number | null; updatedAtMs: number | null };
+  const result = await httpsCallable<Record<string, never>, { games: Row[] }>(functions, "listPrivateGames")({});
+  return Promise.all(
+    result.data.games.map(async ({ id, createdAtMs, updatedAtMs, ...data }) => {
+      const game = mapGame({ id, data: () => ({ ...data, createdAt: createdAtMs ? new Date(createdAtMs) : undefined, updatedAt: updatedAtMs ? new Date(updatedAtMs) : undefined }) });
+      return { ...game, coverUrl: await coverUrl(game.coverPath) };
+    }),
+  );
+}
+
 export function subscribeToGames(callback: (games: Game[]) => void): () => void {
   if (!db) {
     callback(demoGames);
     return () => undefined;
   }
+  let listed: Game[] = [];
+  let invited: Game[] = [];
+  let request = 0;
+  const emit = () => callback([...listed, ...invited].sort((left, right) => updatedMillis(right) - updatedMillis(left)));
   const gamesQuery = query(
     collection(db, "games"),
     where("buildStatus", "==", "published"),
+    where("accessLevel", "in", LISTED_ACCESS_LEVELS),
     orderBy("updatedAt", "desc"),
   );
-  return onSnapshot(gamesQuery, async (snapshot) => {
-    const games = await Promise.all(
+  const unsubscribeGames = onSnapshot(gamesQuery, async (snapshot) => {
+    listed = await Promise.all(
       snapshot.docs.map(async (item) => {
         const game = mapGame(item);
         return { ...game, coverUrl: await coverUrl(game.coverPath) };
       }),
     );
-    callback(games);
+    emit();
   });
+  const unsubscribeAuth = auth
+    ? onAuthStateChanged(auth, async (user) => {
+        const current = ++request;
+        const games = user ? await loadPrivateGames().catch(() => []) : [];
+        if (current !== request) return;
+        invited = games;
+        emit();
+      })
+    : () => undefined;
+  return () => {
+    request += 1;
+    unsubscribeGames();
+    unsubscribeAuth();
+  };
 }
 
 /** Admin-only: every game regardless of build status, newest first. */
@@ -250,8 +287,9 @@ export function subscribeToComments(
 
 export async function findGameById(gameId: string): Promise<Game | null> {
   if (!db) return demoGames.find((game) => game.id === gameId) ?? null;
-  const snapshot = await getDoc(doc(db, "games", gameId));
-  if (!snapshot.exists()) return null;
+  // A private game the account is not invited to reads as permission-denied; treat it as missing.
+  const snapshot = await getDoc(doc(db, "games", gameId)).catch(() => null);
+  if (!snapshot?.exists()) return null;
   const game = mapGame(snapshot);
   return { ...game, coverUrl: await coverUrl(game.coverPath) };
 }
@@ -275,6 +313,14 @@ export async function createOrUpdateGameDraft(input: GameDraftInput): Promise<{
     "createOrUpdateGameDraft",
   );
   return (await callable(input)).data;
+}
+
+/** Admin-only: the emails a private game is shared with. */
+export async function getGameAllowlist(gameId: string): Promise<string[]> {
+  if (!db) return [];
+  const snapshot = await getDoc(doc(db, "gameAllowlists", gameId));
+  const emails = snapshot.data()?.emails;
+  return Array.isArray(emails) ? emails.map(String) : [];
 }
 
 async function callAdmin<Input, Output>(name: string, input: Input): Promise<Output> {
