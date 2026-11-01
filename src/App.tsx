@@ -424,20 +424,26 @@ function PlaySurface({ playUrl, playerRef }: { playUrl: string | null; playerRef
     if (fullscreenElement()) { await exitFullscreen(); return; }
     const player = playerRef.current as FullscreenTarget | null;
     if (!player) return;
+    // iPhone Safari can expose the methods while reporting fullscreen as unavailable.
+    if (!fullscreenEnabled()) { setPseudoFullscreen(true); return; }
     try {
       if (player.requestFullscreen) await player.requestFullscreen();
       else if (player.webkitRequestFullscreen) await player.webkitRequestFullscreen();
-      else setPseudoFullscreen(true);
+      else { setPseudoFullscreen(true); return; }
     } catch {
       setPseudoFullscreen(true);
+      return;
     }
+    // Older WebKit returns nothing and fails silently, so check that fullscreen really started.
+    window.setTimeout(() => { if (!fullscreenElement()) setPseudoFullscreen(true); }, 500);
   }
   return <div className={`play-surface${pseudoFullscreen ? " is-pseudo-fullscreen" : ""}`} ref={playerRef}><div className="play-surface-top"><span>ATELIER PLAYER / LIVE BUILD</span><button className="fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreen ? "전체화면 종료" : "전체화면"} title={fullscreen ? "전체화면 종료" : "전체화면"}><FullscreenIcon exit={fullscreen} /></button></div>{playUrl ? <iframe title="Atelier game build" src={playUrl} allow="fullscreen; gamepad; pointer-lock; autoplay" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock" /> : <div className="demo-frame"><span className="live-dot" /><strong>Build gateway connected</strong><p>Firebase 환경변수를 연결하면 업로드된 게임이 이 프레임에서 실행됩니다.</p></div>}</div>;
 }
 
 // Safari before 16.4 (and iPadOS) only exposes the webkit-prefixed fullscreen API.
 type FullscreenTarget = HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> | void };
-type FullscreenDocument = Document & { webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => Promise<void> | void };
+type FullscreenDocument = Document & { webkitFullscreenEnabled?: boolean; webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => Promise<void> | void };
+function fullscreenEnabled() { const doc = document as FullscreenDocument; return Boolean(doc.fullscreenEnabled ?? doc.webkitFullscreenEnabled); }
 function fullscreenElement() { const doc = document as FullscreenDocument; return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null; }
 async function exitFullscreen() { const doc = document as FullscreenDocument; if (doc.exitFullscreen) await doc.exitFullscreen(); else await doc.webkitExitFullscreen?.(); }
 
