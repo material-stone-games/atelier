@@ -125,6 +125,12 @@ h1 em, .hero h1 em, .page-heading h1 em, .game-detail-copy h1 em { color: var(--
 /* In fullscreen the player fills the screen: the toolbar keeps its height and the build takes the rest. */
 .play-surface:fullscreen { display: flex; flex-direction: column; }
 .play-surface:fullscreen iframe, .play-surface:fullscreen .demo-frame { flex: 1; min-height: 0; height: auto; }
+.play-surface:-webkit-full-screen { display: flex; flex-direction: column; width: 100%; height: 100%; }
+.play-surface:-webkit-full-screen iframe, .play-surface:-webkit-full-screen .demo-frame { flex: 1; min-height: 0; height: auto; }
+/* Fallback where element fullscreen is missing (iPhone Safari): the player covers the viewport and the page stops scrolling. */
+.play-surface.is-pseudo-fullscreen { position: fixed; inset: 0; z-index: 100; margin: 0; border: 0; display: flex; flex-direction: column; height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.play-surface.is-pseudo-fullscreen iframe, .play-surface.is-pseudo-fullscreen .demo-frame { flex: 1; min-height: 0; height: auto; }
+.player-locked, .player-locked body { overflow: hidden; overscroll-behavior: none; }
 .play-screen { min-height: min(72vh, 800px); margin-top: 45px; display: grid; place-content: center; justify-items: center; gap: 14px; padding: 24px; text-align: center; background: #000; border: 1px solid var(--color-line); }
 .play-screen p { margin: 0; color: var(--color-text); font-size: var(--fs-body); }
 .play-screen-kicker { color: var(--accent); font-family: var(--font-mono); font-size: var(--fs-caption); letter-spacing: .14em; }
