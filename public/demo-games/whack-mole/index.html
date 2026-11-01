@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>두더지 잡기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cell: min(25vw, 21vh, 150px);
+    --ink: #3b2614; --cream: #fff6e0; --cream-edge: #d8b47a; --muted: #9a7a55;
+    --accent: #ff5a3c; --gold: #ffc83d;
+    --grass1: #7cc653; --grass2: #70bb48; --grass-edge: #3d7a2a;
+    --dirt: #8a5631; --dirt-dark: #5a341a; --pit: #1e120a;
+    --heat: 0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: radial-gradient(120% 90% at 50% 0%, #3f7d4c 0%, #1d3b26 55%, #0f1f15 100%);
+    color: var(--ink);
+    font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    user-select: none; -webkit-user-select: none;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  body.hammer-cursor, body.hammer-cursor * { cursor: none !important; }
+
+  #stage {
+    height: 100%; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: min(2.4vh, 18px); padding: 16px;
+  }
+
+  /* HUD */
+  #hud { display: flex; gap: 10px; width: calc(var(--cell) * 3.48); max-width: 100%; }
+  .panel {
+    background: var(--cream); border-radius: 16px; padding: 6px 12px 7px;
+    box-shadow: 0 4px 0 var(--cream-edge), 0 8px 18px rgba(0,0,0,.25);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0;
+  }
+  .panel label { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+  .panel b { font-size: clamp(20px, 4.2vh, 30px); font-weight: normal; line-height: 1.05; display: inline-block; }
+  #scorePanel { flex: 1.2; } #comboPanel { flex: 1; } #timePanel { flex: 1.4; }
+  #combo { transition: color .2s; }
+  .pips { display: flex; gap: 5px; margin-top: 3px; }
+  .pip { width: 9px; height: 9px; border-radius: 50%; background: #e6d3ad; transition: background .12s, transform .12s; }
+  .pip.on { background: var(--accent); transform: scale(1.2); }
+  .timebar { width: 100%; height: 10px; background: #e6d3ad; border-radius: 6px; overflow: hidden; margin-top: 4px; }
+  .timebar i { display: block; height: 100%; background: linear-gradient(90deg, #4fb85e, #9be06b); border-radius: 6px; transform-origin: left; }
+  #timePanel.hurry .timebar i { background: linear-gradient(90deg, #ff3b2f, #ff8a3d); }
+  #timePanel.hurry b { color: #e2311f; }
+  #timePanel.hurry { animation: hurry .5s ease-in-out infinite alternate; }
+  @keyframes hurry { to { transform: scale(1.05) rotate(-1deg); } }
+
+  /* 보드 */
+  #board {
+    position: relative; padding: calc(var(--cell) * .16); border-radius: calc(var(--cell) * .24);
+    background: repeating-linear-gradient(135deg, var(--grass1) 0 22px, var(--grass2) 22px 44px);
+    box-shadow:
+      inset 0 -10px 0 rgba(0,0,0,.12), inset 0 6px 0 rgba(255,255,255,.18),
+      0 10px 0 var(--grass-edge), 0 24px 40px rgba(0,0,0,.4),
+      0 0 calc(var(--heat) * 46px) calc(var(--heat) * 8px) rgba(255, 186, 60, calc(var(--heat) * .75));
+    transition: box-shadow .4s;
+  }
+  #grid { display: grid; grid-template-columns: repeat(3, var(--cell)); gap: calc(var(--cell) * 0.08); }
+  .hole { position: relative; width: var(--cell); height: var(--cell); cursor: pointer; }
+  .pit, .lip {
+    position: absolute; left: 8%; right: 8%; bottom: 12%; height: 30%; border-radius: 50%;
+  }
+  .pit {
+    background: radial-gradient(ellipse at 50% 30%, #080402 0 40%, var(--pit) 75%);
+    box-shadow: 0 0 0 calc(var(--cell) * .045) var(--dirt-dark), 0 calc(var(--cell) * .025) 0 calc(var(--cell) * .065) var(--dirt);
+  }
+  .lip {
+    box-shadow: 0 0 0 calc(var(--cell) * .045) var(--dirt-dark), 0 calc(var(--cell) * .025) 0 calc(var(--cell) * .065) var(--dirt),
+                inset 0 calc(var(--cell) * -.012) 0 rgba(255,255,255,.08);
+    clip-path: inset(52% -40% -80% -40%);
+    pointer-events: none;
+  }
+  .clip {
+    position: absolute; left: 8%; right: 8%; bottom: 12%; height: 105%; overflow: hidden;
+    border-radius: 0 0 50% 50% / 0 0 calc(var(--cell) * .15) calc(var(--cell) * .15);
+    pointer-events: none;
+  }
+  .mole {
+    position: absolute; bottom: calc(var(--cell) * .02); left: 50%;
+    width: calc(var(--cell) * .64); height: calc(var(--cell) * .74); margin-left: calc(var(--cell) * -.32);
+    transform: translateY(112%); transform-origin: 50% 100%;
+  }
+  .mole svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .mole .bob { transform-origin: 50% 100%; animation: bob .9s ease-in-out infinite alternate; }
+  @keyframes bob { to { transform: scale(1.03, .97); } }
+  .eyes-x, .eyes-happy, .tongue { display: none; }
+  .mole.hit .eyes-open, .mole.taunt .eyes-open { display: none; }
+  .mole.hit .eyes-x { display: inline; }
+  .mole.taunt .eyes-happy, .mole.taunt .tongue { display: inline; }
+  .mole.hit .bob { animation: none; }
+  .flash {
+    position: absolute; left: 50%; top: 18%; width: 90%; height: 70%; transform: translateX(-50%);
+    border-radius: 50%; background: radial-gradient(circle, #fff 0 30%, rgba(255,240,180,.6) 50%, transparent 70%);
+    opacity: 0; pointer-events: none; mix-blend-mode: screen;
+  }
+
+  /* 연출 레이어 */
+  #fx { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
+  #floats { position: fixed; inset: 0; pointer-events: none; z-index: 21; }
+  .float {
+    position: absolute; transform: translate(-50%, -50%); white-space: nowrap;
+    color: #fff; font-size: 30px; -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill;
+    text-shadow: 0 3px 0 var(--ink);
+  }
+  .float.big { color: var(--gold); font-size: 40px; }
+  .float.miss { color: #e9e2d0; font-size: 22px; }
+  .callout {
+    position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 22;
+    white-space: nowrap; pointer-events: none; text-align: center;
+    color: var(--gold); font-size: clamp(36px, 9vmin, 72px); -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill;
+    text-shadow: 0 6px 0 var(--ink), 0 10px 30px rgba(0,0,0,.4);
+  }
+  .callout small { display: block; font-size: .5em; color: #fff; }
+  #flashScreen { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 19; }
+  #vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 18; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(255, 30, 20, .45) 100%);
+  }
+
+  /* 망치 */
+  #hammer {
+    position: fixed; left: 0; top: 0; z-index: 30; pointer-events: none; opacity: 0;
+    transition: opacity .15s;
+  }
+  #hammer.show { opacity: 1; }
+
+  /* 조준점: 망치가 맞을 위치 */
+  #aim {
+    position: fixed; left: 0; top: 0; width: 34px; height: 34px; margin: -17px 0 0 -17px;
+    z-index: 29; pointer-events: none; opacity: 0; transition: opacity .15s;
+  }
+  #aim.show { opacity: 1; }
+  #aim .ring {
+    position: absolute; inset: 0; border-radius: 50%; border: 3px solid #fff;
+    box-shadow: 0 0 0 1.5px rgba(40, 24, 10, .6), inset 0 0 0 1.5px rgba(40, 24, 10, .6);
+    transition: transform .12s ease-out, border-color .12s;
+  }
+  #aim .ring::before, #aim .ring::after {
+    content: ''; position: absolute; left: 50%; top: -9px; bottom: -9px; width: 3px; margin-left: -1.5px;
+    background: linear-gradient(#fff 0 7px, transparent 7px calc(100% - 7px), #fff calc(100% - 7px));
+    filter: drop-shadow(0 0 1px rgba(40, 24, 10, .9));
+  }
+  #aim .ring::after { transform: rotate(90deg); }
+  #aim .dot {
+    position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
+    background: #fff; box-shadow: 0 0 0 1.5px rgba(40, 24, 10, .7); transition: background .12s, transform .12s;
+  }
+  #aim.lock .ring { border-color: var(--gold); transform: scale(.78) rotate(45deg); }
+  #aim.lock .ring::before, #aim.lock .ring::after { background: linear-gradient(var(--gold) 0 7px, transparent 7px calc(100% - 7px), var(--gold) calc(100% - 7px)); }
+  #aim.lock .dot { background: var(--accent); transform: scale(1.3); }
+  #hammer svg { display: block; width: 100%; height: 100%; transform-origin: 33.3% 95%; transform: rotate(15deg); filter: drop-shadow(0 6px 4px rgba(0,0,0,.35)); }
+
+  /* 오버레이 */
+  .overlay {
+    position: fixed; inset: 0; z-index: 25; display: grid; place-items: center; padding: 16px;
+    background: rgba(10, 22, 14, .55); backdrop-filter: blur(3px);
+  }
+  .overlay[hidden] { display: none; }
+  .card {
+    background: var(--cream); border-radius: 26px; padding: 26px 30px 24px; text-align: center;
+    box-shadow: 0 8px 0 var(--cream-edge), 0 24px 50px rgba(0,0,0,.45); width: min(360px, 100%);
+  }
+  .card h1 { font-size: 40px; font-weight: normal; color: var(--accent); -webkit-text-stroke: 1px #c4361e; line-height: 1.1; }
+  .card p { color: var(--muted); font-size: 16px; line-height: 1.5; margin-top: 8px; }
+  .card .peek { width: 110px; height: 96px; margin: 2px auto 6px; position: relative; overflow: hidden; }
+  .card .peek svg { position: absolute; left: 12px; bottom: -6px; width: 86px; animation: peek 1.8s ease-in-out infinite; }
+  @keyframes peek { 0%, 100% { transform: translateY(70%); } 25%, 70% { transform: translateY(0); } 80% { transform: translateY(4%) scale(1.04, .96); } }
+  .result-score { font-size: 64px; line-height: 1; margin: 8px 0 2px; color: var(--ink); }
+  .result-best { font-size: 17px; color: var(--muted); min-height: 24px; }
+  .result-best.new { color: var(--accent); animation: hurry .35s ease-in-out infinite alternate; }
+  .btn {
+    margin-top: 16px; font: inherit; font-size: 22px; color: #fff; background: var(--accent);
+    border: none; border-radius: 16px; padding: 12px 40px; cursor: pointer;
+    box-shadow: 0 6px 0 #c4361e, 0 10px 16px rgba(0,0,0,.2); transition: transform .08s, box-shadow .08s;
+  }
+  .btn:hover { filter: brightness(1.06); }
+  .btn:active { transform: translateY(5px); box-shadow: 0 1px 0 #c4361e, 0 4px 8px rgba(0,0,0,.2); }
+  .hint { font-size: 13px !important; margin-top: 10px !important; }
+
+  #mute {
+    position: fixed; top: 12px; right: 12px; z-index: 26; width: 42px; height: 42px; border-radius: 50%;
+    border: none; background: var(--cream); font-size: 20px; cursor: pointer;
+    box-shadow: 0 3px 0 var(--cream-edge), 0 6px 12px rgba(0,0,0,.25);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mole .bob, #timePanel.hurry, .card .peek svg { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="hud">
+    <div class="panel" id="scorePanel"><label>점수</label><b id="score">0</b></div>
+    <div class="panel" id="comboPanel">
+      <label>콤보</label><b id="combo">0</b>
+      <div class="pips"><span class="pip"></span><span class="pip"></span><span class="pip"></span></div>
+    </div>
+    <div class="panel" id="timePanel"><label>시간</label><b id="timer">30</b><div class="timebar"><i id="timebar"></i></div></div>
+  </div>
+  <div id="board"><div id="grid"></div></div>
+</div>
+
+<canvas id="fx"></canvas>
+<div id="floats"></div>
+<div id="flashScreen"></div>
+<div id="vignette"></div>
+<div id="aim"><div class="ring"></div><div class="dot"></div></div>
+<div id="hammer"><svg viewBox="0 0 120 120" aria-hidden="true">
+  <rect x="34" y="44" width="12" height="74" rx="6" fill="#c98b4f"/>
+  <rect x="34" y="44" width="5" height="74" rx="2.5" fill="#e3ad72"/>
+  <rect x="34" y="96" width="12" height="20" rx="5" fill="#7b4a26"/>
+  <rect x="6" y="16" width="68" height="36" rx="9" fill="#e5483a"/>
+  <rect x="6" y="16" width="68" height="12" rx="6" fill="#ff7a62"/>
+  <rect x="2" y="13" width="14" height="42" rx="6" fill="#b52f25"/>
+  <rect x="64" y="13" width="14" height="42" rx="6" fill="#b52f25"/>
+  <rect x="34" y="24" width="12" height="20" rx="3" fill="#ffd27a" opacity=".9"/>
+</svg></div>
+
+<button id="mute" aria-label="소리 켜기/끄기">🔊</button>
+
+<div class="overlay" id="startOverlay">
+  <div class="card">
+    <div class="peek" id="peek"></div>
+    <h1>두더지 잡기</h1>
+    <p>튀어나온 두더지를 망치로 내려치세요!<br>3연속마다 보너스 <b style="color:var(--accent)">+2</b><br>놓치면 콤보가 끊겨요</p>
+    <button class="btn" id="startBtn">시작</button>
+    <p class="hint">키보드 숫자패드 1~9로도 칠 수 있어요</p>
+  </div>
+</div>
+<div class="overlay" id="endOverlay" hidden>
+  <div class="card">
+    <h1>게임 종료!</h1>
+    <div class="result-score" id="resultScore">0</div>
+    <div class="result-best" id="resultBest"></div>
+    <button class="btn" id="retryBtn">다시 시작</button>
+  </div>
+</div>
+
+<script>
+  /* ---------- 설정 ---------- */
+  const HOLES = 9;
+  const GAME_TIME = 30;
+  const MOLE_COLORS = [
+    { body: '#9b6a43', dark: '#6e4628', belly: '#e9c79c' }, // 갈색
+    { body: '#8d8a93', dark: '#5f5c66', belly: '#ddd8e2' }, // 회색
+    { body: '#d08a4a', dark: '#9b5d2a', belly: '#f6dbb4' }, // 햄스터
+    { body: '#5d4335', dark: '#3b2a20', belly: '#c9a88a' }, // 초코
+  ];
+  const BEST_KEY = 'whack-mole-best';
+  const MUTE_KEY = 'whack-mole-muted';
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const $ = (id) => document.getElementById(id);
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  function moleSVG(c) {
+    return `<svg viewBox="0 0 100 110" aria-hidden="true"><g class="bob" style="transform-box:fill-box">
+      <circle cx="21" cy="26" r="10" fill="${c.dark}"/><circle cx="79" cy="26" r="10" fill="${c.dark}"/>
+      <circle cx="21" cy="26" r="5" fill="#f2a5a0"/><circle cx="79" cy="26" r="5" fill="#f2a5a0"/>
+      <path d="M8 112 V58 C8 22 28 6 50 6 C72 6 92 22 92 58 V112 Z" fill="${c.body}"/>
+      <path d="M20 26 C28 14 40 10 50 10" stroke="rgba(255,255,255,.22)" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <ellipse cx="50" cy="94" rx="27" ry="26" fill="${c.belly}"/>
+      <g class="eyes-open">
+        <ellipse cx="35" cy="43" rx="8" ry="9" fill="#fff"/><ellipse cx="65" cy="43" rx="8" ry="9" fill="#fff"/>
+        <circle cx="36.5" cy="45" r="5" fill="#1a0f08"/><circle cx="63.5" cy="45" r="5" fill="#1a0f08"/>
+        <circle cx="38" cy="43" r="1.8" fill="#fff"/><circle cx="65" cy="43" r="1.8" fill="#fff"/>
+      </g>
+      <g class="eyes-x" stroke="#1a0f08" stroke-width="3.6" stroke-linecap="round">
+        <path d="M29 37 L41 49 M41 37 L29 49"/><path d="M59 37 L71 49 M71 37 L59 49"/>
+      </g>
+      <g class="eyes-happy" stroke="#1a0f08" stroke-width="3.6" stroke-linecap="round" fill="none">
+        <path d="M28 46 Q35 37 42 46"/><path d="M58 46 Q65 37 72 46"/>
+      </g>
+      <ellipse cx="25" cy="60" rx="7" ry="4.5" fill="#ff8f8f" opacity=".55"/><ellipse cx="75" cy="60" rx="7" ry="4.5" fill="#ff8f8f" opacity=".55"/>
+      <ellipse cx="50" cy="61" rx="15" ry="11" fill="${c.belly}"/>
+      <ellipse cx="50" cy="55" rx="6.5" ry="4.8" fill="#e06a7a"/><ellipse cx="48.5" cy="53.6" rx="2" ry="1.3" fill="#fff" opacity=".7"/>
+      <path d="M43 64 Q50 70 57 64" stroke="#3b2614" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      <path class="tongue" d="M46 67 Q50 78 54 67 Z" fill="#ff6b81"/>
+      <rect x="45.5" y="66" width="9" height="7" rx="1.5" fill="#fff"/><path d="M50 66 V73" stroke="#d9cbb5" stroke-width="1"/>
+    </g></svg>`;
+  }
+
+  /* ---------- 사운드 (Web Audio 합성) ---------- */
+  const Sfx = (() => {
+    let ac = null, out = null, noiseBuf = null;
+    let muted = false;
+    try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch { /* storage unavailable */ }
+
+    function init() {
+      if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      ac = new Ctx();
+      const comp = ac.createDynamicsCompressor();
+      comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 4;
+      comp.attack.value = 0.003; comp.release.value = 0.15;
+      out = ac.createGain();
+      out.gain.value = muted ? 0 : 0.85;
+      out.connect(comp); comp.connect(ac.destination);
+      noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+
+    function env(gain, t, attack, peak, dur) {
+      gain.setValueAtTime(0.0001, t);
+      gain.exponentialRampToValueAtTime(peak, t + attack);
+      gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    }
+
+    // 주파수 경로: [[시간, 주파수], ...] 를 지수 램프로 잇는다
+    function tone(type, path, dur, vol, { at = 0, attack = 0.004, vibrato = 0, vibRate = 28 } = {}) {
+      if (!ac) return;
+      const t = ac.currentTime + at;
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(path[0][1], t);
+      for (let i = 1; i < path.length; i++) o.frequency.exponentialRampToValueAtTime(path[i][1], t + path[i][0]);
+      if (vibrato) {
+        const lfo = ac.createOscillator(), lg = ac.createGain();
+        lfo.frequency.value = vibRate; lg.gain.value = vibrato;
+        lfo.connect(lg); lg.connect(o.frequency);
+        lfo.start(t); lfo.stop(t + dur + 0.05);
+      }
+      env(g.gain, t, attack, vol, dur);
+      o.connect(g); g.connect(out);
+      o.start(t); o.stop(t + dur + 0.05);
+    }
+
+    function noise(dur, vol, { at = 0, type = 'bandpass', f0 = 1000, f1 = 0, q = 1, attack = 0.002 } = {}) {
+      if (!ac) return;
+      const t = ac.currentTime + at;
+      const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+      s.buffer = noiseBuf;
+      f.type = type; f.Q.value = q;
+      f.frequency.setValueAtTime(f0, t);
+      if (f1) f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      env(g.gain, t, attack, vol, dur);
+      s.connect(f); f.connect(g); g.connect(out);
+      s.start(t, Math.random() * 0.4); s.stop(t + dur + 0.05);
+    }
+
+    const note = (n) => 440 * Math.pow(2, (n - 69) / 12);
+
+    return {
+      init,
+      get muted() { return muted; },
+      toggleMute() {
+        muted = !muted;
+        try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch { /* storage unavailable */ }
+        if (out) out.gain.setTargetAtTime(muted ? 0 : 0.85, ac.currentTime, 0.02);
+        return muted;
+      },
+      // 두더지 등장: 흙 튀는 소리 + 뽁
+      pop() {
+        const p = rand(0.92, 1.1);
+        noise(0.07, 0.25, { type: 'bandpass', f0: 1800, f1: 700, q: 1.2 });
+        tone('sine', [[0, 260 * p], [0.07, 720 * p]], 0.09, 0.32);
+        tone('triangle', [[0, 520 * p], [0.05, 1100 * p]], 0.06, 0.08, { at: 0.01 });
+      },
+      // 망치 휘두름
+      swing() {
+        noise(0.09, 0.14, { type: 'bandpass', f0: 500, f1: 2600, q: 0.9, attack: 0.02 });
+      },
+      // 적중: 묵직한 쿵 + 나무 딱 + 두더지 비명. 콤보가 오를수록 음이 올라간다
+      bonk(combo) {
+        const p = 1 + Math.min(combo, 15) * 0.045;
+        tone('sine', [[0, 190], [0.16, 48]], 0.2, 0.95, { attack: 0.002 });
+        tone('triangle', [[0, 1100 * p], [0.05, 420 * p]], 0.06, 0.35, { attack: 0.001 });
+        noise(0.05, 0.45, { type: 'highpass', f0: 2500, q: 0.7 });
+        noise(0.12, 0.3, { type: 'lowpass', f0: 900, f1: 200 });
+        tone('square', [[0, 950 * p], [0.05, 1650 * p], [0.17, 700 * p]], 0.19, 0.07, { at: 0.04, vibrato: 70, vibRate: 32 });
+        tone('sine', [[0, 950 * p], [0.05, 1650 * p], [0.17, 700 * p]], 0.19, 0.12, { at: 0.04, vibrato: 70, vibRate: 32 });
+      },
+      // 헛스윙: 흙바닥 퍽
+      miss() {
+        noise(0.14, 0.42, { type: 'lowpass', f0: 600, f1: 120, q: 0.8 });
+        tone('sine', [[0, 120], [0.1, 55]], 0.12, 0.45);
+      },
+      // 놓친 두더지가 메롱하며 들어감
+      escape() {
+        const p = rand(0.95, 1.05);
+        tone('square', [[0, 720 * p], [0.08, 560 * p]], 0.09, 0.05);
+        tone('square', [[0, 640 * p], [0.1, 380 * p]], 0.12, 0.05, { at: 0.1 });
+        noise(0.08, 0.12, { at: 0.12, type: 'bandpass', f0: 900, f1: 400 });
+      },
+      // 콤보 보너스: 상승 아르페지오 + 반짝임
+      bonus(level) {
+        const base = 72 + Math.min(level, 6);
+        [0, 4, 7, 12].forEach((n, i) => {
+          tone('triangle', [[0, note(base + n)]], 0.16, 0.22, { at: i * 0.055 });
+          tone('sine', [[0, note(base + n + 12)]], 0.12, 0.08, { at: i * 0.055 });
+        });
+        for (let i = 0; i < 5; i++) tone('sine', [[0, rand(2600, 4200)]], 0.08, 0.05, { at: 0.22 + i * 0.04 });
+      },
+      tick(urgent) {
+        tone('square', [[0, urgent ? 1320 : 990]], 0.05, urgent ? 0.1 : 0.06, { attack: 0.001 });
+        tone('sine', [[0, urgent ? 660 : 495]], 0.07, 0.12, { attack: 0.001 });
+      },
+      count(go) {
+        if (go) {
+          [72, 76, 79, 84].forEach((n) => tone('triangle', [[0, note(n)]], 0.45, 0.16));
+          tone('square', [[0, note(84)], [0.3, note(86)]], 0.35, 0.05);
+        } else {
+          tone('triangle', [[0, note(67)]], 0.18, 0.28);
+          tone('sine', [[0, note(79)]], 0.12, 0.08);
+        }
+      },
+      timeUp() {
+        tone('square', [[0, 880], [0.5, 440]], 0.55, 0.06);
+        [79, 76, 72, 67].forEach((n, i) => tone('triangle', [[0, note(n)]], 0.22, 0.22, { at: i * 0.11 }));
+        noise(0.4, 0.15, { at: 0.42, type: 'lowpass', f0: 500, f1: 100 });
+      },
+      countUp(i) {
+        tone('sine', [[0, 600 + Math.min(i, 60) * 18]], 0.04, 0.1, { attack: 0.001 });
+      },
+      fanfare() {
+        const seq = [[72, 0], [76, 0.1], [79, 0.2], [84, 0.32], [79, 0.46], [84, 0.56]];
+        seq.forEach(([n, at]) => {
+          tone('triangle', [[0, note(n)]], 0.2, 0.22, { at });
+          tone('square', [[0, note(n + 12)]], 0.12, 0.035, { at });
+        });
+      },
+      // 콤보 끊김: 바람 빠지듯 내려가는 소리
+      comboBreak() {
+        tone('sawtooth', [[0, 520], [0.32, 140]], 0.34, 0.07, { vibrato: 18, vibRate: 12 });
+        tone('triangle', [[0, 392], [0.3, 110]], 0.32, 0.16);
+      },
+      ui() { tone('sine', [[0, 700], [0.06, 1000]], 0.07, 0.15); },
+    };
+  })();
+
+  /* ---------- 파티클 ---------- */
+  const fxCanvas = $('fx');
+  const fctx = fxCanvas.getContext('2d');
+  let particles = [];
+
+  function resizeFx() {
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    fxCanvas.width = innerWidth * dpr; fxCanvas.height = innerHeight * dpr;
+    fxCanvas.style.width = innerWidth + 'px'; fxCanvas.style.height = innerHeight + 'px';
+    fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  addEventListener('resize', resizeFx);
+  resizeFx();
+
+  function spawn(p) {
+    particles.push(Object.assign({ x: 0, y: 0, vx: 0, vy: 0, g: 0, drag: 0, age: 0, life: 0.6, size: 5, rot: 0, vr: 0, color: '#fff', kind: 'chunk' }, p));
+  }
+
+  function burstDirt(x, y, n, power = 1) {
+    const colors = ['#8a5631', '#5a341a', '#a86b3c', '#3d2412'];
+    for (let i = 0; i < n; i++) {
+      const a = rand(-Math.PI * 0.95, -Math.PI * 0.05);
+      const s = rand(180, 520) * power;
+      spawn({ kind: 'chunk', x: x + rand(-14, 14), y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, g: 1700, life: rand(0.45, 0.8), size: rand(3, 8), rot: rand(0, 6), vr: rand(-12, 12), color: pick(colors) });
+    }
+  }
+
+  function burstStars(x, y, n, power = 1) {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + rand(-0.3, 0.3);
+      const s = rand(220, 420) * power;
+      spawn({ kind: 'star', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, g: 700, drag: 2.2, life: rand(0.5, 0.8), size: rand(7, 12) * Math.min(1.6, power), rot: rand(0, 6), vr: rand(-8, 8), color: pick(['#ffd84a', '#fff2a8', '#ffb43a']) });
+    }
+  }
+
+  function burstSparks(x, y, n, color = '#fff6c8') {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2), s = rand(500, 900);
+      spawn({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, drag: 7, life: rand(0.14, 0.26), size: rand(2, 3.5), color });
+    }
+  }
+
+  function ring(x, y, r, color = '#fff', life = 0.32, width = 6) {
+    spawn({ kind: 'ring', x, y, size: r, life, color, width });
+  }
+
+  function dust(x, y, n) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(-Math.PI, 0), s = rand(40, 160);
+      spawn({ kind: 'dust', x: x + rand(-20, 20), y: y + rand(-6, 6), vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.5, drag: 3, life: rand(0.4, 0.7), size: rand(10, 20), color: 'rgba(214, 190, 150, 1)' });
+    }
+  }
+
+  function confetti(x, y, n, spread = 1) {
+    const colors = ['#ff5a3c', '#ffc83d', '#5ec26a', '#4fa3ff', '#ff7ad1', '#fff'];
+    for (let i = 0; i < n; i++) {
+      const a = rand(-Math.PI * 0.85, -Math.PI * 0.15), s = rand(380, 900) * spread;
+      spawn({ kind: 'confetti', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, g: 900, drag: 1.6, life: rand(1.1, 1.9), size: rand(6, 11), rot: rand(0, 6), vr: rand(-14, 14), color: pick(colors), phase: rand(0, 6) });
+    }
+  }
+
+  function drawStar(c, r) {
+    c.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const rr = i % 2 ? r * 0.45 : r, a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+      c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    c.closePath();
+  }
+
+  function updateParticles(dt) {
+    fctx.clearRect(0, 0, innerWidth, innerHeight);
+    particles = particles.filter((p) => (p.age += dt) < p.life);
+    for (const p of particles) {
+      const t = p.age / p.life;
+      p.vx *= 1 - Math.min(1, p.drag * dt);
+      p.vy = p.vy * (1 - Math.min(1, p.drag * dt)) + p.g * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+      fctx.save();
+      fctx.translate(p.x, p.y);
+      fctx.globalAlpha = p.kind === 'confetti' ? Math.min(1, (1 - t) * 3) : 1 - t * t;
+      fctx.fillStyle = p.color; fctx.strokeStyle = p.color;
+      switch (p.kind) {
+        case 'chunk':
+          fctx.rotate(p.rot); fctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.8); break;
+        case 'star':
+          fctx.rotate(p.rot); drawStar(fctx, p.size * (1 - t * 0.4)); fctx.fill();
+          fctx.lineWidth = 1.5; fctx.strokeStyle = '#a8620f'; fctx.stroke(); break;
+        case 'spark': {
+          const len = Math.hypot(p.vx, p.vy) * 0.035;
+          fctx.rotate(Math.atan2(p.vy, p.vx)); fctx.lineWidth = p.size; fctx.lineCap = 'round';
+          fctx.beginPath(); fctx.moveTo(-len, 0); fctx.lineTo(0, 0); fctx.stroke(); break;
+        }
+        case 'ring': {
+          const e = 1 - Math.pow(1 - t, 3);
+          fctx.lineWidth = p.width * (1 - t); fctx.beginPath(); fctx.arc(0, 0, p.size * (0.3 + e), 0, Math.PI * 2); fctx.stroke(); break;
+        }
+        case 'dust':
+          fctx.globalAlpha = (1 - t) * 0.55; fctx.beginPath(); fctx.arc(0, 0, p.size * (0.6 + t * 0.9), 0, Math.PI * 2); fctx.fill(); break;
+        case 'confetti':
+          fctx.rotate(p.rot); fctx.scale(1, Math.abs(Math.sin(p.age * 9 + p.phase)) + 0.15);
+          fctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2); break;
+      }
+      fctx.restore();
+    }
+  }
+
+  /* ---------- 화면 흔들림 · 플래시 · 텍스트 ---------- */
+  const stage = $('stage');
+  let shake = 0;
+  function addShake(amount) { shake = Math.min(26, shake + amount * (reduceMotion ? 0.3 : 1)); }
+  function updateShake(dt) {
+    if (shake > 0.05) {
+      const a = shake;
+      stage.style.transform = `translate(${rand(-a, a)}px, ${rand(-a, a)}px) rotate(${rand(-a, a) * 0.08}deg)`;
+      shake *= Math.pow(0.0008, dt);
+    } else if (shake) {
+      shake = 0; stage.style.transform = '';
+    }
+  }
+
+  function flashScreen(opacity, dur = 160) {
+    $('flashScreen').animate([{ opacity }, { opacity: 0 }], { duration: dur, easing: 'ease-out' });
+  }
+
+  function floatText(x, y, text, cls = '') {
+    const el = document.createElement('div');
+    el.className = 'float ' + cls;
+    el.textContent = text;
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    $('floats').appendChild(el);
+    const drift = rand(-24, 24);
+    el.animate([
+      { transform: 'translate(-50%, -50%) scale(.3)', opacity: 1 },
+      { transform: 'translate(-50%, -90%) scale(1.35)', opacity: 1, offset: 0.18 },
+      { transform: `translate(calc(-50% + ${drift * 0.5}px), -130%) scale(1)`, opacity: 1, offset: 0.55 },
+      { transform: `translate(calc(-50% + ${drift}px), -210%) scale(.9)`, opacity: 0 },
+    ], { duration: 780, easing: 'cubic-bezier(.2,.8,.3,1)' }).onfinish = () => el.remove();
+  }
+
+  function callout(html, { dur = 900, hold = 0.5 } = {}) {
+    const el = document.createElement('div');
+    el.className = 'callout';
+    el.innerHTML = html;
+    document.body.appendChild(el);
+    const anim = el.animate([
+      { transform: 'translate(-50%, -50%) scale(2.6) rotate(-8deg)', opacity: 0 },
+      { transform: 'translate(-50%, -50%) scale(.92) rotate(3deg)', opacity: 1, offset: 0.14 },
+      { transform: 'translate(-50%, -50%) scale(1.06) rotate(-1deg)', opacity: 1, offset: 0.24 },
+      { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: hold },
+      { transform: 'translate(-50%, -70%) scale(.9)', opacity: 0 },
+    ], { duration: dur, easing: 'ease-out' });
+    anim.onfinish = () => el.remove();
+    return anim;
+  }
+
+  function bump(el, scale = 1.4) {
+    el.animate([{ transform: `scale(${scale}) rotate(-4deg)` }, { transform: 'scale(.95)', offset: 0.6 }, { transform: 'scale(1)' }], { duration: 260, easing: 'ease-out' });
+  }
+
+  /* ---------- 망치 ---------- */
+  const hammer = $('hammer');
+  const hammerSvg = hammer.querySelector('svg');
+  const finePointer = matchMedia('(pointer: fine)').matches;
+  const aim = $('aim');
+  let hammerSize = 100, hideHammerTimer = 0, aimPos = null;
+
+  function sizeHammer() {
+    hammerSize = Math.max(70, $('grid').firstElementChild.getBoundingClientRect().width * 0.85);
+    hammer.style.width = hammer.style.height = hammerSize + 'px';
+  }
+  // 망치 머리 왼쪽 면이 내려쳤을 때 포인터 위치에 닿도록 배치 (회전축은 손잡이 끝)
+  function moveHammer(x, y) {
+    const s = hammerSize / 120;
+    hammer.style.transform = `translate(${x + 43 * s}px, ${y - 101 * s}px)`;
+    aim.style.transform = `translate(${x}px, ${y}px)`;
+    aimPos = { x, y };
+  }
+  function setHammerVisible(on) {
+    hammer.classList.toggle('show', on);
+    aim.classList.toggle('show', on);
+  }
+  // 조준점이 올라와 있는 두더지 위에 있으면 노란색으로 잠긴다
+  function updateAim() {
+    if (!aimPos || !aim.classList.contains('show')) return;
+    const el = document.elementFromPoint(aimPos.x, aimPos.y);
+    const hole = el && el.closest('.hole');
+    const lock = !!hole && G.state === 'play' && G.active >= 0 && holes[G.active].el === hole;
+    aim.classList.toggle('lock', lock);
+  }
+  function swingHammer() {
+    aim.querySelector('.ring').animate([
+      { transform: 'scale(.45)' }, { transform: 'scale(1.25)', offset: 0.5 }, { transform: 'scale(1)' },
+    ], { duration: 220, easing: 'ease-out', composite: 'add' });
+    hammerSvg.animate([
+      { transform: 'rotate(15deg)' },
+      { transform: 'rotate(-62deg) scale(1.05, .95)', offset: 0.22 },
+      { transform: 'rotate(-56deg)', offset: 0.42 },
+      { transform: 'rotate(22deg)', offset: 0.8 },
+      { transform: 'rotate(15deg)' },
+    ], { duration: 280, easing: 'ease-out' });
+  }
+  function showHammerAt(x, y, transient) {
+    moveHammer(x, y);
+    setHammerVisible(true);
+    clearTimeout(hideHammerTimer);
+    if (transient) hideHammerTimer = setTimeout(() => setHammerVisible(false), 450);
+  }
+
+  /* ---------- 보드 ---------- */
+  const grid = $('grid');
+  const holes = [];
+  for (let i = 0; i < HOLES; i++) {
+    const el = document.createElement('div');
+    el.className = 'hole';
+    el.innerHTML = '<div class="pit"></div><div class="clip"><div class="mole"></div></div><div class="lip"></div><div class="flash"></div>';
+    grid.appendChild(el);
+    const hole = { el, mole: el.querySelector('.mole'), flash: el.querySelector('.flash'), anim: null, up: false };
+    holes.push(hole);
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      showHammerAt(e.clientX, e.clientY, e.pointerType !== 'mouse');
+      whack(i, e.clientX, e.clientY);
+    });
+  }
+  $('peek').innerHTML = moleSVG(MOLE_COLORS[0]);
+  sizeHammer();
+  addEventListener('resize', sizeHammer);
+
+  function holePoint(i, fy = 0.38) {
+    const r = holes[i].el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height * fy };
+  }
+
+  function playMole(hole, frames, opts) {
+    const prev = hole.anim;
+    hole.anim = hole.mole.animate(frames, Object.assign({ fill: 'forwards' }, opts));
+    if (prev) prev.cancel();
+    return hole.anim;
+  }
+
+  function raise(i) {
+    const hole = holes[i];
+    hole.mole.innerHTML = moleSVG(pick(MOLE_COLORS));
+    hole.mole.className = 'mole';
+    hole.up = true;
+    playMole(hole, [
+      { transform: 'translateY(112%) scale(1, 1)' },
+      { transform: 'translateY(-8%) scale(.86, 1.16)', offset: 0.55 },
+      { transform: 'translateY(3%) scale(1.1, .9)', offset: 0.78 },
+      { transform: 'translateY(0) scale(1, 1)' },
+    ], { duration: 280, easing: 'cubic-bezier(.2,.75,.35,1)' });
+    const p = holePoint(i, 0.82);
+    burstDirt(p.x, p.y, 7, 0.55);
+    Sfx.pop();
+  }
+
+  function knockDown(i) {
+    const hole = holes[i];
+    hole.up = false;
+    hole.mole.classList.add('hit');
+    playMole(hole, [
+      { transform: 'translateY(0) scale(1, 1)' },
+      { transform: 'translateY(14%) scale(1.42, .5)', offset: 0.12 },
+      { transform: 'translateY(12%) scale(1.3, .58)', offset: 0.5 },
+      { transform: 'translateY(30%) scale(.9, 1.1)', offset: 0.7 },
+      { transform: 'translateY(112%) scale(.9, 1.1)' },
+    ], { duration: 460, easing: 'ease-in' });
+    hole.flash.animate([{ opacity: 1, transform: 'translateX(-50%) scale(.6)' }, { opacity: 0, transform: 'translateX(-50%) scale(1.3)' }], { duration: 220, easing: 'ease-out' });
+  }
+
+  function retreat(i) {
+    const hole = holes[i];
+    hole.up = false;
+    hole.mole.classList.add('taunt');
+    playMole(hole, [
+      { transform: 'translateY(0) scale(1, 1) rotate(0)' },
+      { transform: 'translateY(-4%) scale(1.04, .97) rotate(-6deg)', offset: 0.25 },
+      { transform: 'translateY(-4%) scale(1.04, .97) rotate(6deg)', offset: 0.5 },
+      { transform: 'translateY(112%) scale(.95, 1.05) rotate(0)' },
+    ], { duration: 340, easing: 'ease-in' });
+    Sfx.escape();
+  }
+
+  function hideAll() {
+    holes.forEach((h, i) => { if (h.up) retreat(i); });
+  }
+
+  /* ---------- HUD ---------- */
+  const ui = {
+    score: $('score'), combo: $('combo'), timer: $('timer'), timebar: $('timebar'),
+    timePanel: $('timePanel'), pips: [...document.querySelectorAll('.pip')], vignette: $('vignette'),
+  };
+  let shownScore = 0;
+
+  function renderCombo() {
+    ui.combo.textContent = G.combo;
+    const filled = G.combo % 3;
+    ui.pips.forEach((p, i) => p.classList.toggle('on', i < filled));
+    const heat = Math.min(1, G.combo / 15);
+    document.documentElement.style.setProperty('--heat', heat.toFixed(2));
+    ui.combo.style.color = heat > 0.66 ? '#e2311f' : heat > 0.33 ? '#e8770c' : '';
+  }
+
+  function renderTime() {
+    const t = Math.max(0, G.timeLeft);
+    ui.timer.textContent = Math.ceil(t);
+    ui.timebar.style.transform = `scaleX(${t / GAME_TIME})`;
+    ui.timePanel.classList.toggle('hurry', G.state === 'play' && t <= 5);
+  }
+
+  function renderScore(dt) {
+    if (shownScore !== G.score) {
+      shownScore += (G.score - shownScore) * Math.min(1, dt * 14);
+      if (Math.abs(G.score - shownScore) < 0.5) shownScore = G.score;
+      ui.score.textContent = Math.round(shownScore);
+    }
+  }
+
+  /* ---------- 게임 ---------- */
+  let best = 0;
+  try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch { /* storage unavailable */ }
+
+  const G = { state: 'ready', score: 0, combo: 0, timeLeft: GAME_TIME, active: -1, last: -1, moleAge: 0, moleLife: 0, nextIn: 0, hitstop: 0, countdown: 0 };
+
+  // 점수가 오를수록 두더지가 빨리 들어간다
+  const moleLifeMs = () => Math.max(600, 1200 - G.score * 15);
+
+  function showMole() {
+    let next = Math.floor(Math.random() * HOLES);
+    if (next === G.last) next = (next + 1) % HOLES; // 같은 구멍 연속 방지
+    G.active = G.last = next;
+    G.moleAge = 0;
+    G.moleLife = moleLifeMs();
+    raise(next);
+  }
+
+  function whack(i, x, y) {
+    Sfx.init();
+    swingHammer();
+    Sfx.swing();
+    if (G.state !== 'play') return;
+
+    if (i !== G.active) {
+      const p = holePoint(i, 0.8);
+      dust(p.x, p.y, 6);
+      burstDirt(p.x, p.y, 4, 0.35);
+      floatText(x, y - 10, '헛손질', 'miss');
+      Sfx.miss();
+      addShake(3);
+      return;
+    }
+
+    knockDown(i);
+    G.active = -1;
+    G.combo++;
+    // 콤보 보너스: 3연속마다 +2 추가
+    const bonus = G.combo % 3 === 0 ? 2 : 0;
+    const gained = 1 + bonus;
+    G.score += gained;
+
+    const head = holePoint(i, 0.32);
+    const heat = Math.min(1, G.combo / 15);
+    G.hitstop = 0.05 + heat * 0.035 + (bonus ? 0.04 : 0);
+    addShake(7 + heat * 6 + (bonus ? 6 : 0));
+    burstStars(head.x, head.y, 6 + Math.round(heat * 4) + (bonus ? 4 : 0), 1 + heat * 0.4);
+    burstSparks(head.x, head.y, 10);
+    burstDirt(head.x, holePoint(i, 0.82).y, 10, 0.8);
+    ring(head.x, head.y, 60 + heat * 40, '#fff', 0.3, 7);
+    if (heat > 0.33) ring(head.x, head.y, 90 + heat * 50, '#ffc83d', 0.42, 4);
+    floatText(head.x, head.y - 20, '+' + gained, bonus ? 'big' : '');
+    flashScreen(bonus ? 0.28 : 0.08 + heat * 0.06, bonus ? 220 : 120);
+    Sfx.bonk(G.combo);
+
+    bump(ui.combo, bonus ? 1.7 : 1.35);
+    bump(ui.score, bonus ? 1.5 : 1.2);
+    renderCombo();
+
+    if (bonus) {
+      Sfx.bonus(G.combo / 3);
+      callout(`콤보 ×${G.combo}!<small>보너스 +${bonus}</small>`, { dur: 900 });
+      confetti(head.x, head.y, 22, 0.8);
+      ui.pips.forEach((p) => {
+        p.classList.add('on');
+        p.animate([{ transform: 'scale(2)', background: '#ffc83d' }, { transform: 'scale(1)' }], { duration: 320 });
+      });
+      setTimeout(renderCombo, 260);
+    }
+
+    // 다음 두더지 곧바로 등장
+    G.nextIn = 200;
+  }
+
+  // 두더지를 놓치면 콤보가 0으로 돌아간다
+  function breakCombo(i) {
+    if (G.combo === 0) return;
+    const lost = G.combo;
+    G.combo = 0;
+    renderCombo();
+    const p = holePoint(i, 0.3);
+    floatText(p.x, p.y - 10, lost >= 3 ? `콤보 ${lost} 끊김` : '놓침', 'miss');
+    ui.combo.animate([
+      { transform: 'translateX(0)', color: '#e2311f' },
+      { transform: 'translateX(-6px)', offset: 0.2 },
+      { transform: 'translateX(6px)', offset: 0.4 },
+      { transform: 'translateX(-4px)', offset: 0.6 },
+      { transform: 'translateX(0)' },
+    ], { duration: 360 });
+    if (lost >= 3) { Sfx.comboBreak(); addShake(4); }
+  }
+
+  function startCountdown() {
+    if (G.state === 'countdown' || G.state === 'play') return;
+    Sfx.init();
+    Sfx.ui();
+    $('startOverlay').hidden = true;
+    $('endOverlay').hidden = true;
+    G.state = 'countdown';
+    G.countdown = 3;
+    G.score = 0; G.combo = 0; G.timeLeft = GAME_TIME; G.active = -1; G.last = -1; G.nextIn = 0;
+    shownScore = 0; ui.score.textContent = 0;
+    renderCombo(); renderTime();
+    callout('3', { dur: 800, hold: 0.7 });
+    Sfx.count(false);
+  }
+
+  function startPlay() {
+    G.state = 'play';
+    callout('시작!', { dur: 700, hold: 0.5 });
+    Sfx.count(true);
+    addShake(6);
+    showMole();
+  }
+
+  function endGame() {
+    G.state = 'over';
+    G.timeLeft = 0;
+    G.active = -1;
+    renderTime();
+    hideAll();
+    ui.vignette.style.opacity = 0;
+    Sfx.timeUp();
+    addShake(10);
+    callout('시간 종료!', { dur: 1100, hold: 0.7 });
+    setTimeout(showResult, 1000);
+  }
+
+  function showResult() {
+    const isNew = G.score > best;
+    if (isNew) {
+      best = G.score;
+      try { localStorage.setItem(BEST_KEY, String(best)); } catch { /* storage unavailable */ }
+    }
+    const scoreEl = $('resultScore'), bestEl = $('resultBest');
+    scoreEl.textContent = 0;
+    bestEl.textContent = '';
+    bestEl.classList.remove('new');
+    $('endOverlay').hidden = false;
+    $('retryBtn').focus({ preventScroll: true });
+    $('endOverlay').querySelector('.card').animate([
+      { transform: 'translateY(40px) scale(.8)', opacity: 0 },
+      { transform: 'translateY(-6px) scale(1.03)', opacity: 1, offset: 0.7 },
+      { transform: 'none', opacity: 1 },
+    ], { duration: 360, easing: 'ease-out' });
+
+    // 점수 카운트업
+    const target = G.score, dur = Math.min(1400, 300 + target * 25), t0 = performance.now();
+    let lastShown = -1;
+    (function step(now) {
+      const k = Math.min(1, (now - t0) / dur);
+      const v = Math.round(target * (1 - Math.pow(1 - k, 3)));
+      if (v !== lastShown) { scoreEl.textContent = v; if (v > 0) Sfx.countUp(v); lastShown = v; }
+      if (k < 1) return requestAnimationFrame(step);
+      bump(scoreEl, 1.3);
+      if (isNew && target > 0) {
+        bestEl.textContent = '★ 최고 기록 갱신! ★';
+        bestEl.classList.add('new');
+        Sfx.fanfare();
+        const r = scoreEl.getBoundingClientRect();
+        confetti(r.left + r.width / 2, r.top, 70, 1.1);
+        flashScreen(0.3, 260);
+      } else {
+        bestEl.textContent = `최고 기록 ${best}`;
+      }
+    })(t0);
+  }
+
+  /* ---------- 루프 ---------- */
+  let lastFrame = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+
+    // 히트스톱: 적중 순간 게임 시간만 잠깐 멈춘다
+    if (G.hitstop > 0) G.hitstop -= dt;
+    else update(dt);
+
+    updateParticles(dt);
+    updateShake(dt);
+    renderScore(dt);
+    updateAim();
+    requestAnimationFrame(frame);
+  }
+
+  function update(dt) {
+    if (G.state === 'countdown') {
+      const before = Math.ceil(G.countdown);
+      G.countdown -= dt;
+      const after = Math.ceil(G.countdown);
+      if (G.countdown <= 0) startPlay();
+      else if (after !== before) { callout(String(after), { dur: 800, hold: 0.7 }); Sfx.count(false); }
+      return;
+    }
+    if (G.state !== 'play') return;
+
+    const before = Math.ceil(G.timeLeft);
+    G.timeLeft -= dt;
+    const after = Math.ceil(G.timeLeft);
+    if (G.timeLeft <= 0) return endGame();
+    if (after !== before && after <= 5) {
+      Sfx.tick(after <= 3);
+      bump(ui.timer, 1.5);
+      ui.vignette.animate([{ opacity: 0.5 + (5 - after) * 0.1 }, { opacity: 0.15 }], { duration: 900, fill: 'forwards' });
+    }
+    renderTime();
+
+    if (G.active >= 0) {
+      G.moleAge += dt * 1000;
+      if (G.moleAge >= G.moleLife) {
+        retreat(G.active);
+        breakCombo(G.active);
+        G.active = -1;
+        showMole();
+      }
+    } else if (G.nextIn > 0) {
+      G.nextIn -= dt * 1000;
+      if (G.nextIn <= 0) showMole();
+    }
+  }
+  requestAnimationFrame(frame);
+
+  /* ---------- 입력 ---------- */
+  $('startBtn').addEventListener('click', startCountdown);
+  $('retryBtn').addEventListener('click', startCountdown);
+
+  const muteBtn = $('mute');
+  const renderMute = () => { muteBtn.textContent = Sfx.muted ? '🔇' : '🔊'; };
+  renderMute();
+  muteBtn.addEventListener('click', () => { Sfx.init(); Sfx.toggleMute(); renderMute(); });
+
+  if (finePointer) {
+    document.body.classList.add('hammer-cursor');
+    addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') showHammerAt(e.clientX, e.clientY, false); });
+    document.addEventListener('pointerleave', () => setHammerVisible(false));
+    // 구멍 밖을 클릭해도 망치는 휘두른다
+    addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && !e.target.closest('.hole, button')) { Sfx.init(); swingHammer(); Sfx.swing(); }
+    });
+  }
+
+  // 숫자패드 배치: 7 8 9 / 4 5 6 / 1 2 3
+  const KEY_TO_HOLE = { 7: 0, 8: 1, 9: 2, 4: 3, 5: 4, 6: 5, 1: 6, 2: 7, 3: 8 };
+  addEventListener('keydown', (e) => {
+    if (e.key === 'm' || e.key === 'M') { Sfx.init(); Sfx.toggleMute(); renderMute(); return; }
+    if ((e.key === ' ' || e.key === 'Enter') && (G.state === 'ready' || G.state === 'over') && !e.repeat) {
+      if (G.state === 'over' && $('endOverlay').hidden) return;
+      e.preventDefault(); startCountdown(); return;
+    }
+    const idx = KEY_TO_HOLE[e.key];
+    if (idx === undefined || e.repeat) return;
+    const p = holePoint(idx, 0.4);
+    showHammerAt(p.x, p.y, !finePointer);
+    whack(idx, p.x, p.y);
+  });
+</script>
+</body>
+</html>
