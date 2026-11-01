@@ -48,14 +48,8 @@ h1 em, .hero h1 em, .page-heading h1 em, .game-detail-copy h1 em { color: var(--
 .button-like:hover, .button-like.active { color: var(--orange); border-color: var(--orange); }
 .button.small { min-height: 36px; padding: 0 14px; }
 .live-dot { width: 7px; height: 7px; display: inline-block; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px var(--green); }
-.hero-art { min-height: 480px; position: relative; display: grid; place-items: center; }
-.orbit { position: absolute; width: 390px; height: 215px; border: 1px solid rgba(117,169,255,.35); border-radius: 50%; transform: rotate(-31deg); }
-.orbit-two { width: 310px; height: 370px; border-color: rgba(255,113,68,.32); transform: rotate(42deg); }
-.stone-block { position: absolute; background: linear-gradient(135deg, #303d43, #171d21 68%); box-shadow: 24px 28px 0 rgba(0,0,0,.19), inset 1px 1px rgba(255,255,255,.14); }
-.stone-main { width: 220px; height: 260px; transform: rotate(-11deg) skewY(4deg); display: grid; place-items: center; }
-.stone-main::before { content: ""; position: absolute; inset: 17px; border: 1px solid rgba(232,231,223,.19); }
-.stone-main span { font-family: var(--display); font-size: 64px; letter-spacing: -.15em; color: var(--orange); transform: rotate(11deg); }
-.stone-small { width: 77px; height: 77px; right: 12%; top: 17%; transform: rotate(29deg); background: linear-gradient(135deg, #5f7080, #293138); }
+.hero-art { min-height: 480px; position: relative; }
+.gem-forge, .gem-forge canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .footer-mark { font-family: var(--mono); color: var(--orange); font-size: 10px; letter-spacing: .1em; }
 .home-cards { padding-top: 76px; padding-bottom: 98px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .info-card { min-height: 220px; position: relative; border: 1px solid var(--line); padding: 24px; background: var(--panel); transition: transform .2s, border-color .2s; }
@@ -258,11 +252,6 @@ h1 em, .hero h1 em, .page-heading h1 em, .game-detail-copy h1 em { color: var(--
 .hero h1 { font-size: clamp(2.4rem, min(3.6vw, 7.5vh), 4.6rem); white-space: nowrap; line-height: 1.12; letter-spacing: -.045em; font-weight: 700; margin-bottom: clamp(16px, 3vh, 30px); }
 .home-page .hero-lede { margin-bottom: clamp(18px, 3.4vh, 32px); }
 .home-page .hero-art { min-height: 0; height: clamp(220px, 44vh, 460px); }
-.home-page .orbit-one { width: min(390px, 46vh); height: min(215px, 25vh); }
-.home-page .orbit-two { width: min(310px, 36vh); height: min(370px, 43vh); }
-.home-page .stone-main { width: min(220px, 26vh); height: min(260px, 30vh); }
-.home-page .stone-main span { font-size: min(64px, 7.5vh); }
-.home-page .stone-small { width: min(77px, 9vh); height: min(77px, 9vh); }
 .home-page .home-cards { padding-top: 0; padding-bottom: 0; }
 .home-page .info-card { min-height: clamp(128px, 20vh, 220px); }
 @media (max-width: 900px) { .home-page .hero-art { display: none; } .hero h1 { font-size: clamp(2.2rem, 6vw, 3.6rem); white-space: normal; } }
