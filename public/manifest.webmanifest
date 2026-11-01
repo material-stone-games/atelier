@@ -1,0 +1,19 @@
+{
+  "id": "/atelier/",
+  "name": "Atelier — Material Stone Games",
+  "short_name": "Atelier",
+  "description": "Material Stone Games의 게임과 실험작을 만나는 Atelier.",
+  "lang": "ko",
+  "start_url": "/atelier/",
+  "scope": "/atelier/",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#101418",
+  "theme_color": "#101418",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

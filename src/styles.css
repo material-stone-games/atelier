@@ -307,3 +307,12 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .center-state { min-height: 60dvh; padding-top: 40px; padding-bottom: 40px; }
   .center-state h1 { font-size: 40px; }
 }
+
+/* Home-screen web app (viewport-fit=cover): the page runs under the status bar and beside the notch,
+   so the header, sides and bottom keep their content inside the safe area. All insets are 0 elsewhere. */
+.app-shell { padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.site-header { padding-top: env(safe-area-inset-top); }
+/* The mobile menu panels hang from the header row, not from the inset-padded header. */
+.header-inner { position: relative; }
+.toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
+@media (max-width: 640px) { .toast { bottom: calc(16px + env(safe-area-inset-bottom)); } }
