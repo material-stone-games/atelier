@@ -24,11 +24,17 @@ export function pixShadow(ctx, x, y, w, alpha = 0.3) {
 
 const snap = (v, u) => Math.round(v / u) * u;
 
-// ── 기사 idle 스프라이트 시트 (sprites/knight-idle.png, 42×43 × 4프레임) ──
-// 불러오기 전이나 실패하면 글자 격자로 그린 기존 기사로 그림
-const SHEET = { fw: 42, fh: 43, n: 4, footX: 21, px: 1.15, img: null, white: null };
+// ── 기사 스프라이트 시트 ──
+// idle: sprites/knight-idle.png (42×43 × 4프레임), 공격: sprites/knight-attack.png (50×43 × 4프레임)
+// 두 시트 모두 발 기준 x=21. 불러오기 전이나 실패하면 글자 격자로 그린 기존 기사로 그림
+const SHEET = { fw: 42, fh: 43, footX: 21, px: 1.15, img: null, white: null };
+const ATK_SHEET = { fw: 50, fh: 43, footX: 21, px: 1.15, img: null, white: null };
 const IDLE_SEQ = [0, 1, 2, 1, 0, 3];   // 기본 → 내쉼 → 깃털 → 내쉼 → 기본 → 망토
-if (typeof Image !== 'undefined') {
+// 공격 진행도 → 프레임: 들어 올리기 / 내려치기 / 끝까지 / 돌아오기. 내려치기가 STRIKE_AT(0.45)를 덮음
+const ATK_STEPS = [0.3, 0.55, 0.8, 1];
+
+function loadSheet(sheet, src) {
+    if (typeof Image === 'undefined') return;
     const img = new Image();
     img.onload = () => {
         // 피격 깜박임용 흰 실루엣
@@ -39,21 +45,30 @@ if (typeof Image !== 'undefined') {
         x.globalCompositeOperation = 'source-in';
         x.fillStyle = '#ffffff';
         x.fillRect(0, 0, c.width, c.height);
-        SHEET.img = img;
-        SHEET.white = c;
+        sheet.img = img;
+        sheet.white = c;
     };
-    img.src = 'sprites/knight-idle.png';
+    img.src = src;
 }
+loadSheet(SHEET, 'sprites/knight-idle.png');
+loadSheet(ATK_SHEET, 'sprites/knight-attack.png');
 
 function drawKnightSheet(ctx, o) {
-    const walk = !!o.walk, t = o.t ?? 0;
-    // 서 있을 때 6fps, 걸을 때 10fps로 숨쉬기 루프. 공격 중에는 기본 자세 고정
-    const seq = (o.atk ?? 0) > 0 ? 0 : IDLE_SEQ[Math.floor(t * (walk ? 10 : 6)) % IDLE_SEQ.length];
-    const P = SHEET.px;
-    const src = o.flash ? SHEET.white : SHEET.img;
+    const walk = !!o.walk, t = o.t ?? 0, atk = o.atk ?? 0;
+    let sheet = SHEET, seq;
+    if (atk > 0 && ATK_SHEET.img) {
+        sheet = ATK_SHEET;
+        seq = ATK_STEPS.findIndex(s => atk < s);
+        if (seq < 0) seq = ATK_STEPS.length - 1;
+    } else {
+        // 서 있을 때 6fps, 걸을 때 10fps로 숨쉬기 루프. 공격 시트가 없으면 공격 중 기본 자세 고정
+        seq = atk > 0 ? 0 : IDLE_SEQ[Math.floor(t * (walk ? 10 : 6)) % IDLE_SEQ.length];
+    }
+    const P = sheet.px;
+    const src = o.flash ? sheet.white : sheet.img;
     const prev = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(src, seq * SHEET.fw, 0, SHEET.fw, SHEET.fh, -SHEET.footX * P, -SHEET.fh * P, SHEET.fw * P, SHEET.fh * P);
+    ctx.drawImage(src, seq * sheet.fw, 0, sheet.fw, sheet.fh, -sheet.footX * P, -sheet.fh * P, sheet.fw * P, sheet.fh * P);
     ctx.imageSmoothingEnabled = prev;
 }
 

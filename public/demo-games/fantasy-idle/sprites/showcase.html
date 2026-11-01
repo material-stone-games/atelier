@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Knight Showcase</title>
+  <style>
+    :root {
+      --bg: #14141f; --panel: #1d1d2c; --line: #2c2c40; --text: #d8d8e4; --muted: #8a8aa0; --accent: #e2b647;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--text);
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    }
+    main { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+    h1 { margin: 0; font-size: 20px; }
+    h1 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+    h2 { margin: 0 0 12px; font-size: 14px; color: var(--muted); font-weight: 600; }
+    #stage { width: 100%; height: auto; display: block; border-radius: 6px; image-rendering: pixelated; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-top: 14px; }
+    .controls label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+    button {
+      background: var(--accent); color: #1a1408; border: 0; border-radius: 6px; padding: 8px 16px;
+      font: inherit; font-weight: 700; cursor: pointer;
+    }
+    button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+    select, input[type=range] { accent-color: var(--accent); }
+    select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font: inherit; }
+    kbd { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 12px; }
+    button kbd { background: rgba(0,0,0,0.12); border-color: rgba(0,0,0,0.3); color: inherit; }
+    .strip { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+    .cell { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
+    .cell canvas {
+      image-rendering: pixelated; border-radius: 6px; border: 2px solid transparent;
+      background: repeating-conic-gradient(#2a2a3a 0 25%, #222232 0 50%) 0 0 / 16px 16px;
+    }
+    .cell.on canvas { border-color: var(--accent); }
+    .cell b { font-size: 13px; }
+    .cell span { font-size: 12px; color: var(--muted); }
+    .note { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+    #err { color: #ff8a7a; display: none; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>기사 공격 애니메이션<small>knight-idle.png · knight-attack.png</small></h1>
+
+  <section>
+    <h2>무대</h2>
+    <canvas id="stage" width="240" height="120"></canvas>
+    <div class="controls">
+      <button id="atk">공격 <kbd>Space</kbd></button>
+      <label><input type="checkbox" id="auto" checked> 자동 공격</label>
+      <label><input type="checkbox" id="juice"> 게임 연출 (기울기·전진)</label>
+      <label>속도 <input type="range" id="speed" min="0.25" max="2" step="0.25" value="1"> <output id="speedOut">1×</output></label>
+      <label>배경 <select id="biome"></select></label>
+      <button class="ghost" id="reload">이미지 다시 불러오기</button>
+    </div>
+    <p class="note">Aseprite에서 다시 내보낸 뒤 <b>이미지 다시 불러오기</b>를 누르면 바뀐 그림이 바로 보여요. 아래 프레임을 누르면 그 프레임에서 멈춰요.</p>
+    <p class="note" id="err"></p>
+  </section>
+
+  <section>
+    <h2>프레임 (4배)</h2>
+    <div class="strip" id="strip"></div>
+  </section>
+</main>
+
+<script>
+// 게임과 같은 값: pixel-actors.js SHEET, IDLE_SEQ / player.js attackPose
+const IDLE = { src: 'knight-idle.png', fw: 42, fh: 43, n: 4, footX: 21 };
+const ATK  = { src: 'knight-attack.png', fw: 50, fh: 43, n: 4, footX: 21 };
+const IDLE_SEQ = [0, 1, 2, 1, 0, 3];
+const ATK_MS = [120, 70, 110, 140];          // knight-attack.aseprite 프레임 길이
+const ATK_NAMES = ['들어 올리기', '내려치기', '끝까지', '돌아오기'];
+const BIOMES = [
+  { name: '초원', sky: '#87ceeb', ground: '#4a7c3f', accent: '#5a9e4f' },
+  { name: '숲', sky: '#2d4a1e', ground: '#2d5f3f', accent: '#3a7a50' },
+  { name: '사막', sky: '#e8b84a', ground: '#c8a050', accent: '#d8b060' },
+  { name: '화산', sky: '#3a0800', ground: '#5a1a00', accent: '#8b2500' },
+  { name: '설원', sky: '#1a2848', ground: '#8aa8d0', accent: '#a0c0e8' },
+  { name: '어둠의 땅', sky: '#050510', ground: '#1a0a2e', accent: '#2a1050' },
+  { name: '체크무늬', checker: true },
+];
+
+const $ = id => document.getElementById(id);
+const stage = $('stage'), ctx = stage.getContext('2d');
+const imgs = {};
+let attackT = -1;          // 공격 시작 뒤 지난 시간(ms), -1이면 idle
+let frozen = null;         // { sheet, i } 고정 프레임
+let lastAuto = 0, clock = 0;
+
+function load(bust) {
+  const q = bust ? '?v=' + Date.now() : '';
+  return Promise.all([IDLE, ATK].map(s => new Promise(res => {
+    const im = new Image();
+    im.onload = () => { imgs[s.src] = im; res(); };
+    im.onerror = () => { $('err').style.display = 'block'; $('err').textContent = s.src + '를 불러오지 못했어요.'; res(); };
+    im.src = s.src + q;
+  }))).then(buildStrip);
+}
+
+function drawFrame(c, sheet, i, x, footY, scale) {
+  const im = imgs[sheet.src];
+  if (!im) return;
+  c.imageSmoothingEnabled = false;
+  c.drawImage(im, i * sheet.fw, 0, sheet.fw, sheet.fh,
+    Math.round(x - sheet.footX * scale), Math.round(footY - sheet.fh * scale), sheet.fw * scale, sheet.fh * scale);
+}
+
+// player.js attackPose의 기울기·전진만 (진행도 p: 0~1)
+function lean(p) {
+  const lerp = (a, b, k) => a + (b - a) * k;
+  if (p <= 0 || p >= 1) return [0, 0];
+  if (p < 0.4) { const k = 1 - Math.pow(1 - p / 0.4, 2); return [lerp(0, -0.12, k), lerp(0, -2, k)]; }
+  if (p < 0.6) { const k = (p - 0.4) / 0.2; return [lerp(-0.12, 0.18, k), lerp(-2, 6, k)]; }
+  const k = (p - 0.6) / 0.4, e = k * k * (3 - 2 * k);
+  return [lerp(0.18, 0, e), lerp(6, 0, e)];
+}
+
+function background(b) {
+  const W = stage.width, H = stage.height, gy = H - 22;
+  if (b.checker) {
+    for (let y = 0; y < H; y += 8) for (let x = 0; x < W; x += 8) {
+      ctx.fillStyle = ((x + y) / 8) % 2 ? '#3a3a4c' : '#2e2e3e'; ctx.fillRect(x, y, 8, 8);
+    }
+    return gy;
+  }
+  const g = ctx.createLinearGradient(0, 0, 0, gy);
+  g.addColorStop(0, shade(b.sky, -0.35)); g.addColorStop(1, shade(b.sky, 0.15));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, gy);
+  ctx.fillStyle = b.accent; ctx.fillRect(0, gy, W, 3);
+  ctx.fillStyle = b.ground; ctx.fillRect(0, gy + 3, W, H - gy);
+  ctx.fillStyle = shade(b.ground, -0.25);
+  for (let x = 0; x < W; x += 12) ctx.fillRect(x + ((x / 12) % 3) * 3, gy + 8 + ((x / 12) % 2) * 6, 3, 2);
+  return gy;
+}
+
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = v => Math.max(0, Math.min(255, Math.round(k < 0 ? v * (1 + k) : v + (255 - v) * k)));
+  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+
+function attackFrame(t) {
+  let acc = 0;
+  for (let i = 0; i < ATK_MS.length; i++) { acc += ATK_MS[i]; if (t < acc) return i; }
+  return -1;
+}
+
+let prev = performance.now();
+function tick(now) {
+  const dt = (now - prev) * Number($('speed').value);
+  prev = now;
+  clock += dt;
+  const total = ATK_MS.reduce((a, b) => a + b, 0);
+
+  if (!frozen) {
+    if (attackT >= 0) { attackT += dt; if (attackT >= total) attackT = -1; }
+    if ($('auto').checked && attackT < 0 && clock - lastAuto > 1400) startAttack();
+  }
+
+  const b = BIOMES[$('biome').value];
+  ctx.clearRect(0, 0, stage.width, stage.height);
+  const gy = background(b);
+  const scale = 2, x = 96;
+
+  // 그림자
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(x - 15 * scale / 2 - 4, gy - 1, 15 * scale + 8, 3);
+
+  let sheet = IDLE, i;
+  if (frozen) { sheet = frozen.sheet; i = frozen.i; }
+  else if (attackT >= 0) { sheet = ATK; i = attackFrame(attackT); }
+  else i = IDLE_SEQ[Math.floor(clock / 1000 * 6) % IDLE_SEQ.length];
+
+  let rot = 0, dx = 0;
+  if ($('juice').checked && !frozen && attackT >= 0) [rot, dx] = lean(attackT / total);
+  ctx.save();
+  ctx.translate(x + dx, gy);
+  ctx.rotate(rot);
+  drawFrame(ctx, sheet, i, 0, 0, scale);
+  ctx.restore();
+
+  document.querySelectorAll('.cell').forEach(el =>
+    el.classList.toggle('on', el.dataset.sheet === sheet.src && Number(el.dataset.i) === i));
+  requestAnimationFrame(tick);
+}
+
+function startAttack() { frozen = null; attackT = 0; lastAuto = clock; }
+
+function buildStrip() {
+  const strip = $('strip');
+  strip.innerHTML = '';
+  const cells = [{ sheet: IDLE, i: 0, name: 'idle', note: '비교용' }]
+    .concat(ATK_NAMES.map((n, i) => ({ sheet: ATK, i, name: n, note: ATK_MS[i] + 'ms' })));
+  for (const c of cells) {
+    const el = document.createElement('div');
+    el.className = 'cell'; el.dataset.sheet = c.sheet.src; el.dataset.i = c.i;
+    const cv = document.createElement('canvas');
+    const s = 4;
+    cv.width = ATK.fw * s; cv.height = ATK.fh * s;
+    drawFrame(cv.getContext('2d'), c.sheet, c.i, IDLE.footX * s + 4, cv.height, s);
+    el.append(cv);
+    el.insertAdjacentHTML('beforeend', `<b>${c.name}</b><span>${c.note}</span>`);
+    el.onclick = () => {
+      frozen = frozen && frozen.sheet === c.sheet && frozen.i === c.i ? null : { sheet: c.sheet, i: c.i };
+      attackT = -1;
+    };
+    strip.append(el);
+  }
+}
+
+BIOMES.forEach((b, i) => $('biome').add(new Option(b.name, i)));
+$('atk').onclick = startAttack;
+$('reload').onclick = () => load(true);
+$('speed').oninput = e => $('speedOut').textContent = e.target.value + '×';
+addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); startAttack(); } });
+load(false).then(() => requestAnimationFrame(tick));
+</script>
+</body>
+</html>
