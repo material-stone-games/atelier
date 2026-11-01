@@ -26,10 +26,11 @@ const CHUNK_COUNT = 9;
 const DUST_PER_CHUNK = 6;
 const SPARK_COUNT = 90;
 // The rough diamond is an octahedron; the cut plane travels through it between these local heights.
-const ROUGH_RADIUS = .7;
+const ROUGH_RADIUS = .58;
 const ORE_TOP = .76;
-const ORE_BOTTOM = -.76;
-const GEM_IN_ORE = .72;
+// A little past the tip so the jittered rough is cut away completely.
+const ORE_BOTTOM = -.78;
+const GEM_IN_ORE = .6;
 
 const CUT_COLOR = new THREE.Color("#1747ff");
 
@@ -38,7 +39,7 @@ function progress(t: number, [start, end]: readonly [number, number]) { return c
 function easeInOut(x: number) { return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; }
 function easeOut(x: number) { return 1 - Math.pow(1 - x, 3); }
 
-function roughRadiusAt(y: number) { return ROUGH_RADIUS * Math.max(0, 1 - Math.abs(y) / ORE_TOP) + .04; }
+function roughRadiusAt(y: number) { return ROUGH_RADIUS * Math.max(0, 1 - Math.abs(y) / ORE_TOP) + .08; }
 
 // Where the beam touches the ore, relative to its centre: it rasters across the front while descending.
 function cutHeight(t: number) { return THREE.MathUtils.lerp(ORE_TOP, ORE_BOTTOM, progress(t, CUT)); }
@@ -220,7 +221,7 @@ export default function GemForge() {
       const mesh = new THREE.Mesh(track(roughen(new THREE.IcosahedronGeometry(.42 + random() * .1, 0), .16, random)), material);
       mesh.rotation.set(random() * 6, random() * 6, random() * 6);
       ore.add(mesh);
-      return { mesh, material, direction, home: direction.clone().multiplyScalar(.44), turn: new THREE.Vector3(random() - .5, random() - .5, random() - .5).multiplyScalar(4), start: CHIP_START + index * CHIP_GAP };
+      return { mesh, material, direction, home: direction.clone().multiplyScalar(.4), turn: new THREE.Vector3(random() - .5, random() - .5, random() - .5).multiplyScalar(4), start: CHIP_START + index * CHIP_GAP };
     });
 
     // Laser: a small emitter above the ore, a white-hot core inside an orange glow, and a hot spot where it bites.
