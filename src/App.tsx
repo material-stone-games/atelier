@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { AccessLevel, AuthState, Comment, Game, Post, TargetType } from "./types";
 import { AdminTools } from "./AdminTools";
 import { PrivacyPage } from "./PrivacyPage";
+
+// three.js is heavy, so the hero animation loads in its own chunk after the page text.
+const GemForge = lazy(() => import("./GemForge"));
 import { accessLabel, accessPermission, rotationForGames } from "./lib/access";
 import { APP_BASE_PATH } from "./lib/config";
 import {
@@ -166,10 +169,7 @@ function HomePage() {
           </div>
         </div>
         <div className="hero-art" aria-hidden="true">
-          <div className="orbit orbit-one" />
-          <div className="orbit orbit-two" />
-          <div className="stone-block stone-main"><span>MS</span></div>
-          <div className="stone-block stone-small" />
+          <Suspense fallback={null}><GemForge /></Suspense>
         </div>
       </section>
       <section className="home-cards section-frame">
