@@ -2,27 +2,33 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
-// One cycle: raw ore fades in at the top left, a laser slices it from top to bottom and leaves a
-// cut gem behind, the gem flies onto the stone dish and pushes the previous gem off to the right.
-const CYCLE = 10.6;
+// One cycle: raw ore fades in at the top left and its rock chips away to free a rough diamond,
+// a laser slices the rough from top to bottom into a cut gem, the gem flies onto the stone dish
+// and pushes the previous gem off to the right.
+const CYCLE = 12;
 const FADE_IN = [0, 1.3] as const;
-const LASER_ON = [1.4, 1.9] as const;
-const CUT = [1.9, 5.1] as const;
-const LASER_OFF = [5.1, 5.45] as const;
-const MOVE = [5.6, 7.2] as const;
-const IMPACT = 6.35;
-const PUSH = [IMPACT, 8.5] as const;
-const SETTLE = [7.2, 8.0] as const;
+const CHIP_START = 1.5;
+const CHIP_GAP = .2;
+const CHIP_LIFE = 1.1;
+const LASER_ON = [3.4, 3.9] as const;
+const CUT = [3.9, 6.8] as const;
+const LASER_OFF = [6.8, 7.15] as const;
+const MOVE = [7.3, 8.9] as const;
+const IMPACT = 8.05;
+const PUSH = [IMPACT, 10.2] as const;
+const SETTLE = [8.9, 9.7] as const;
 
 const ORE_POS = new THREE.Vector3(-1.1, 0.62, 0);
 const DISH_GEM_POS = new THREE.Vector3(0.6, -0.5, 0);
 const PUSHED_POS = new THREE.Vector3(2.5, -0.7, -0.2);
 const EMITTER_OFFSET = new THREE.Vector3(1.1, .5, 1);
 const CHUNK_COUNT = 9;
+const DUST_PER_CHUNK = 6;
 const SPARK_COUNT = 90;
-// The cut plane travels through the ore between these local heights.
-const ORE_TOP = .92;
-const ORE_BOTTOM = -.9;
+// The rough diamond is an octahedron; the cut plane travels through it between these local heights.
+const ROUGH_RADIUS = .7;
+const ORE_TOP = .76;
+const ORE_BOTTOM = -.76;
 const GEM_IN_ORE = .72;
 
 const CUT_COLOR = new THREE.Color("#1747ff");
@@ -32,11 +38,13 @@ function progress(t: number, [start, end]: readonly [number, number]) { return c
 function easeInOut(x: number) { return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; }
 function easeOut(x: number) { return 1 - Math.pow(1 - x, 3); }
 
+function roughRadiusAt(y: number) { return ROUGH_RADIUS * Math.max(0, 1 - Math.abs(y) / ORE_TOP) + .04; }
+
 // Where the beam touches the ore, relative to its centre: it rasters across the front while descending.
 function cutHeight(t: number) { return THREE.MathUtils.lerp(ORE_TOP, ORE_BOTTOM, progress(t, CUT)); }
 function contactOffset(t: number, target: THREE.Vector3) {
   const y = cutHeight(t);
-  const radius = .66 * Math.sqrt(Math.max(0, 1 - (y / .95) ** 2)) + .06;
+  const radius = roughRadiusAt(y) + .03;
   const sweep = Math.sin(t * 6.5) * 1.15;
   return target.set(Math.sin(sweep) * radius, y, Math.cos(sweep) * radius);
 }
@@ -192,34 +200,28 @@ export default function GemForge() {
     const cutGlint = makeGlint();
     const restGlint = makeGlint();
 
-    // Raw ore: a lump of rough stone chunks with blue crystal tips. The gem waits inside it.
+    // Raw ore: a rough diamond wrapped in stone chunks that chip away before the laser starts.
     const ore = new THREE.Group();
     ore.position.copy(ORE_POS);
     scene.add(ore);
-    const crystalMaterial = track(new THREE.MeshStandardMaterial({ color: "#3d6dff", emissive: "#14307a", roughness: .3, metalness: .2, flatShading: true, transparent: true, clippingPlanes: [oreClip] }));
-    const oreMaterials = Array.from({ length: CHUNK_COUNT }, () => {
-      const material = track(stoneMaterial.clone());
-      material.transparent = true;
-      material.side = THREE.DoubleSide;
-      material.clippingPlanes = [oreClip];
-      material.color.offsetHSL(0, 0, (random() - .5) * .08);
-      return material;
-    });
-    for (let index = 0; index < CHUNK_COUNT; index++) {
+    const roughMaterial = track(new THREE.MeshPhysicalMaterial({ color: "#5a6fa3", roughness: .78, metalness: 0, sheen: .6, sheenColor: "#a9bce8", sheenRoughness: .8, envMapIntensity: .6, emissive: "#0d1c4f", emissiveIntensity: .25, flatShading: true, transparent: true, side: THREE.DoubleSide, clippingPlanes: [oreClip] }));
+    const rough = new THREE.Mesh(track(roughen(new THREE.OctahedronGeometry(ROUGH_RADIUS, 1), .2, random)), roughMaterial);
+    rough.scale.y = 1.05;
+    rough.rotation.y = .4;
+    ore.add(rough);
+    const chunks = Array.from({ length: CHUNK_COUNT }, (_, index) => {
       const y = 1 - (index + .5) / CHUNK_COUNT * 2;
       const radius = Math.sqrt(1 - y * y);
       const angle = index * 2.39996;
-      const mesh = new THREE.Mesh(track(roughen(new THREE.IcosahedronGeometry(.4 + random() * .1, 0), .16, random)), oreMaterials[index]);
-      mesh.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius).multiplyScalar(.36);
+      const direction = new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius).normalize();
+      const material = track(stoneMaterial.clone());
+      material.transparent = true;
+      material.color.offsetHSL(0, 0, (random() - .5) * .08);
+      const mesh = new THREE.Mesh(track(roughen(new THREE.IcosahedronGeometry(.42 + random() * .1, 0), .16, random)), material);
       mesh.rotation.set(random() * 6, random() * 6, random() * 6);
-      if (index % 2 === 0) {
-        const tip = new THREE.Mesh(track(new THREE.OctahedronGeometry(.1, 0)), crystalMaterial);
-        tip.position.set(.28, .12, .1);
-        tip.scale.set(.7, 1.5, .7);
-        mesh.add(tip);
-      }
       ore.add(mesh);
-    }
+      return { mesh, material, direction, home: direction.clone().multiplyScalar(.44), turn: new THREE.Vector3(random() - .5, random() - .5, random() - .5).multiplyScalar(4), start: CHIP_START + index * CHIP_GAP };
+    });
 
     // Laser: a small emitter above the ore, a white-hot core inside an orange glow, and a hot spot where it bites.
     const metalMaterial = track(new THREE.MeshStandardMaterial({ color: "#2b3137", metalness: .85, roughness: .32, flatShading: true, transparent: true }));
@@ -249,21 +251,31 @@ export default function GemForge() {
     seam.rotation.x = -Math.PI / 2;
     scene.add(seam);
 
-    // Sparks spray from the contact point for the whole cut; additive vertex colours fade them out.
-    const sparkPositions = new Float32Array(SPARK_COUNT * 3);
-    const sparkColors = new Float32Array(SPARK_COUNT * 3);
+    // Stone dust from each chip, then sparks from the laser contact; additive vertex colours fade them out.
+    const dustTint = new THREE.Color("#9aa6b8");
+    const dustData = chunks.flatMap((chunk) => Array.from({ length: DUST_PER_CHUNK }, () => ({
+      start: chunk.start + random() * .2,
+      origin: chunk.home.clone(),
+      life: .6 + random() * .5,
+      gravity: 1.2,
+      velocity: chunk.direction.clone().multiplyScalar(.7 + random() * 1).add(new THREE.Vector3(random() - .5, random() * .6, random() - .5)),
+      tint: dustTint,
+    })));
+    const laserData = Array.from({ length: SPARK_COUNT }, (_, index) => {
+      const start = CUT[0] + (index / SPARK_COUNT) * (CUT[1] - CUT[0]) + random() * .05;
+      const origin = contactOffset(start, new THREE.Vector3());
+      const outward = origin.clone().setY(0).normalize();
+      const velocity = outward.multiplyScalar(.6 + random() * 1.1).add(new THREE.Vector3((random() - .5) * .8, .4 + random() * 1.1, (random() - .5) * .8));
+      return { start, origin, life: .45 + random() * .5, gravity: 2.4, velocity, tint: random() > .35 ? new THREE.Color("#ffc59e") : new THREE.Color("#fff4e8") };
+    });
+    const sparkData = [...dustData, ...laserData];
+    const sparkPositions = new Float32Array(sparkData.length * 3);
+    const sparkColors = new Float32Array(sparkData.length * 3);
     const sparkGeo = track(new THREE.BufferGeometry());
     sparkGeo.setAttribute("position", new THREE.BufferAttribute(sparkPositions, 3));
     sparkGeo.setAttribute("color", new THREE.BufferAttribute(sparkColors, 3));
     const sparks = new THREE.Points(sparkGeo, track(new THREE.PointsMaterial({ size: .11, map: track(softDiscTexture("rgba(255,255,255,1)", "rgba(255,255,255,0)")), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
     scene.add(sparks);
-    const sparkData = Array.from({ length: SPARK_COUNT }, (_, index) => {
-      const start = CUT[0] + (index / SPARK_COUNT) * (CUT[1] - CUT[0]) + random() * .05;
-      const origin = contactOffset(start, new THREE.Vector3());
-      const outward = origin.clone().setY(0).normalize();
-      const velocity = outward.multiplyScalar(.6 + random() * 1.1).add(new THREE.Vector3((random() - .5) * .8, .4 + random() * 1.1, (random() - .5) * .8));
-      return { start, origin, life: .45 + random() * .5, velocity, tint: random() > .35 ? new THREE.Color("#ffc59e") : new THREE.Color("#fff4e8") };
-    });
 
     const pointer = new THREE.Vector2();
     const onPointerMove = (event: PointerEvent) => { pointer.set(event.clientX / window.innerWidth * 2 - 1, -(event.clientY / window.innerHeight * 2 - 1)); };
@@ -334,8 +346,18 @@ export default function GemForge() {
       ore.position.y += Math.sin(clockTime * 1.1) * .05;
       ore.rotation.y += dt * .35;
       ore.scale.setScalar(.85 + .15 * fade);
-      crystalMaterial.opacity = fade;
-      for (const material of oreMaterials) material.opacity = fade;
+      roughMaterial.opacity = fade;
+      for (const chunk of chunks) {
+        const chip = progress(t, [chunk.start, chunk.start + CHIP_LIFE]);
+        const eased = easeOut(chip);
+        chunk.mesh.position.copy(chunk.home).addScaledVector(chunk.direction, eased * 1.1);
+        chunk.mesh.position.y -= chip * chip * .5;
+        chunk.mesh.rotation.x += chunk.turn.x * dt * chip;
+        chunk.mesh.rotation.z += chunk.turn.z * dt * chip;
+        chunk.mesh.scale.setScalar(1 - .45 * eased);
+        chunk.material.opacity = fade * (1 - chip);
+        chunk.mesh.visible = chunk.material.opacity > .01;
+      }
 
       // Everything above the beam is gone from the ore and present on the gem.
       const cutY = ore.position.y + cutHeight(t) * ore.scale.y;
@@ -370,7 +392,7 @@ export default function GemForge() {
       hotSpot.material.opacity = cutting ? firing : 0;
       hotLight.position.copy(contact).addScaledVector(beamDir, -.15);
       hotLight.intensity = cutting ? 5 * firing : 0;
-      const seamRadius = (.66 * Math.sqrt(Math.max(0, 1 - (cutHeight(t) / .95) ** 2)) + .05) * ore.scale.x;
+      const seamRadius = (roughRadiusAt(cutHeight(t)) + .02) * ore.scale.x;
       seam.position.set(ore.position.x, cutY, ore.position.z);
       seam.scale.setScalar(Math.max(.01, seamRadius));
       seam.material.opacity = cutting ? .4 * firing : 0;
@@ -381,7 +403,7 @@ export default function GemForge() {
         const life = alive ? age / spark.life : 1;
         const base = index * 3;
         sparkPositions[base] = ore.position.x + spark.origin.x + spark.velocity.x * age;
-        sparkPositions[base + 1] = ore.position.y + spark.origin.y + spark.velocity.y * age - 2.4 * age * age;
+        sparkPositions[base + 1] = ore.position.y + spark.origin.y + spark.velocity.y * age - spark.gravity * age * age;
         sparkPositions[base + 2] = ore.position.z + spark.origin.z + spark.velocity.z * age;
         const glow = alive ? (1 - life) * (1 - life) : 0;
         sparkColors[base] = spark.tint.r * glow;
