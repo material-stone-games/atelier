@@ -23,9 +23,30 @@ service cloud.firestore {
       allow delete: if admin();
     }
 
+    function listedLevel(level) {
+      return level in ['public', 'login', 'subscriber', 'member'];
+    }
+
+    // Private games are readable only by the verified emails in gameAllowlists/{gameId}.
+    function invited(gameId) {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/gameAllowlists/$(gameId))
+        && request.auth.token.email.lower() in get(/databases/$(database)/documents/gameAllowlists/$(gameId)).data.emails;
+    }
+
     match /games/{gameId} {
-      allow read: if resource.data.buildStatus == 'published' || admin();
+      allow get: if admin() || (resource.data.buildStatus == 'published'
+        && (listedLevel(resource.data.accessLevel) || (resource.data.accessLevel == 'private' && invited(gameId))));
+      // Lists must filter out private games; invitees get theirs from the listPrivateGames Function.
+      allow list: if admin() || (resource.data.buildStatus == 'published' && listedLevel(resource.data.accessLevel));
       allow write: if admin();
+    }
+
+    match /gameAllowlists/{gameId} {
+      // Written only by Functions; never readable by invitees, so they cannot see each other's emails.
+      allow read: if admin();
+      allow write: if false;
     }
 
     match /posts/{postId} {

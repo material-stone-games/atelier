@@ -75,4 +75,5 @@
   --tier-login: var(--cream-100);
   --tier-subscriber: var(--gem-400);
   --tier-member: var(--violet-300);
+  --tier-private: var(--ember-400);
 }

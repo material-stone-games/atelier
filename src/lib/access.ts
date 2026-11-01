@@ -9,7 +9,19 @@ const ROTATION_MIN = 3;
 const ROTATION_MAX = 5;
 
 export function isAccessLevel(value: unknown): value is AccessLevel {
-  return value === "public" || value === "login" || value === "subscriber" || value === "member";
+  return value === "public" || value === "login" || value === "subscriber" || value === "member" || value === "private";
+}
+
+/** Levels anyone may list; private games are visible only to the emails on their allowlist. */
+export const LISTED_ACCESS_LEVELS: AccessLevel[] = ["public", "login", "subscriber", "member"];
+
+const EMAIL_PATTERN = /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/;
+
+/** Splits a comma/newline separated list into unique lowercase emails, and reports anything malformed. */
+export function parseEmailList(value: string): { emails: string[]; invalid: string[] } {
+  const items = value.split(/[\s,;]+/).map((item) => item.trim().toLowerCase()).filter(Boolean);
+  const unique = [...new Set(items)];
+  return { emails: unique.filter((item) => EMAIL_PATTERN.test(item)), invalid: unique.filter((item) => !EMAIL_PATTERN.test(item)) };
 }
 
 export function weekIndex(date = new Date()): number {
@@ -47,7 +59,8 @@ export function accessPermission(game: Pick<Game, "id" | "accessLevel">, auth: A
   if (level === "public") return { allowed: true };
   if (level === "subscriber" && rotation.has(game.id)) return { allowed: true };
   if (!auth.user) return { allowed: false, reason: "login" };
-  if (auth.isAdmin || level === "login") return { allowed: true };
+  // A private game only reaches the client when the rules let this account read it; the server re-checks on play.
+  if (auth.isAdmin || level === "login" || level === "private") return { allowed: true };
   if (level === "member") return auth.isMember ? { allowed: true } : { allowed: false, reason: "member" };
   if (auth.isSubscriber || auth.isMember) return { allowed: true };
   return { allowed: false, reason: "subscriber" };
@@ -57,5 +70,6 @@ export function accessLabel(level: AccessLevel): string {
   if (level === "public") return "PUBLIC";
   if (level === "login") return "DEMO / LOGIN";
   if (level === "subscriber") return "PROTOTYPE / SUBSCRIBER";
+  if (level === "private") return "PRIVATE / INVITE ONLY";
   return "EARLY ACCESS / MEMBER";
 }
