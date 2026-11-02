@@ -2,7 +2,8 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Pinching over a game should not zoom the page. Android and the iOS home-screen app honour this; iOS Safari tabs ignore it. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="theme-color" content="#101418" />
     <!-- Home-screen web app: opens without browser chrome. iOS reads the apple-* tags, others the manifest. -->
