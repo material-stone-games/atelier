@@ -290,8 +290,9 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .page-main { min-height: calc(100dvh - 145px); }
   .main-nav.is-open, .header-actions.is-open { box-shadow: 0 18px 30px rgba(0,0,0,.35); }
   .hub-toolbar { gap: 10px; }
-  .game-grid { gap: 4px; }
-  .game-card-copy { padding-bottom: 24px; }
+  .game-grid { gap: 0; }
+  .game-card + .game-card { padding-top: 28px; border-top: 1px solid var(--color-line); }
+  .game-card-copy { padding: 12px 1px 28px; }
   .game-detail-art { min-height: 0; aspect-ratio: 16 / 9; }
   .game-detail-art::after { inset: 12px; }
   .game-detail-art.has-cover { padding: 13px; }
