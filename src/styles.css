@@ -9,7 +9,7 @@ a { color: inherit; text-decoration: none; }
 button { color: inherit; cursor: pointer; }
 button:disabled { opacity: .48; cursor: not-allowed; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.app-shell { min-height: 100vh; overflow: hidden; background: radial-gradient(circle at 80% 0%, rgba(47,67,77,.22), transparent 30rem), var(--color-bg); }
+.app-shell { min-height: 100vh; overflow: clip; background: radial-gradient(circle at 80% 0%, rgba(47,67,77,.22), transparent 30rem), var(--color-bg); }
 .site-header { position: sticky; top: 0; z-index: 30; border-bottom: 1px solid var(--color-line); background: color-mix(in srgb, var(--color-bg) 88%, transparent); backdrop-filter: blur(18px); }
 .header-inner { max-width: 1440px; height: 78px; margin: auto; padding: 0 46px; display: flex; align-items: center; gap: 52px; }
 .brand { display: inline-flex; align-items: center; gap: 12px; min-width: 190px; }
@@ -316,3 +316,8 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .header-inner { position: relative; }
 .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
 @media (max-width: 640px) { .toast { bottom: calc(16px + env(safe-area-inset-bottom)); } }
+/* On phones the hub pulls the game card nearest the middle of the screen into place once a scroll slows down. */
+@media (max-width: 640px) {
+  html:has(.hub-page) { scroll-snap-type: y proximity; scroll-padding-top: calc(69px + env(safe-area-inset-top)); }
+  .hub-page .game-card { scroll-snap-align: center; }
+}
