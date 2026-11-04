@@ -271,6 +271,7 @@ firebase functions:log --only processBuildZip
 - `createComment`
 - `toggleLike`
 - `getPlaySession`
+- `recordGameView`
 - `playGateway`
 - `processBuildZip`
 - `monthlyRetentionSweep`

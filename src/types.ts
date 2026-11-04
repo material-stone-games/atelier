@@ -22,6 +22,8 @@ export interface Game {
   likeCount: number;
   /** Demo mode only: path under the site base that serves a bundled build. */
   demoPlayPath?: string;
+  /** Demo mode only: stands in for the count kept in gameStats/{id}. */
+  demoViewCount?: number;
   createdAt?: Timestamp | Date;
   updatedAt?: Timestamp | Date;
 }

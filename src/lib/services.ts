@@ -33,6 +33,7 @@ import type {
 } from "../types";
 import { LISTED_ACCESS_LEVELS, isAccessLevel } from "./access";
 import { appConfig, hasFirebaseConfig } from "./config";
+import { trackGameView } from "./gameViews";
 import { auth, db, functions, storage } from "./firebase";
 
 export { hasFirebaseConfig };
@@ -401,6 +402,18 @@ export async function createComment(
     { commentId: string }
   >(functions, "createComment");
   return (await callable({ targetType, targetId, text, parentId })).data;
+}
+
+/** Returns the game's view total, counting this visit once per tab; null when the count is unavailable. */
+export async function recordGameView(game: Game): Promise<number | null> {
+  if (!functions) return game.demoViewCount ?? null;
+  const callable = httpsCallable<{ gameId: string; countView: boolean }, { viewCount: number }>(functions, "recordGameView");
+  try {
+    return await trackGameView(game.id, async (countView) => (await callable({ gameId: game.id, countView })).data.viewCount);
+  } catch {
+    // The count is decorative, so a failure must never disturb the game page.
+    return null;
+  }
 }
 
 export async function getPlaySession(gameId: string): Promise<{ playUrl?: string; playPath?: string }> {
