@@ -380,6 +380,19 @@ export const getPlaySession = onCall({ region: "asia-northeast3", enforceAppChec
   return { playPath: path, playUrl: base ? `${base}/playGateway${path}` : undefined };
 });
 
+/** Counts one visit to a game page and returns the total; stats live outside games/{id} so visits don't wake every onSnapshot listener. */
+export const recordGameView = onCall({ region: "asia-northeast3", enforceAppCheck: true, maxInstances: 3 }, async (request) => {
+  const gameId = typeof request.data?.gameId === "string" ? request.data.gameId : "";
+  if (!gameId) throw new HttpsError("invalid-argument", "게임을 확인해 주세요.");
+  const game = await db.doc(`games/${gameId}`).get();
+  if (!game.exists || !(await canSeeGame(game, request.auth))) throw new HttpsError("not-found", "게임을 찾을 수 없습니다.");
+  const statsRef = db.doc(`gameStats/${gameId}`);
+  const countable = request.data?.countView === true && game.get("buildStatus") === "published" && request.auth?.token.admin !== true;
+  if (countable) await statsRef.set({ viewCount: FieldValue.increment(1) }, { merge: true });
+  const stats = await statsRef.get();
+  return { viewCount: Number(stats.get("viewCount") ?? 0) };
+});
+
 export const playGateway = onRequest({ region: "asia-northeast3", maxInstances: 3, secrets: [PLAY_SESSION_SECRET], cors: true }, async (request, response) => {
   const match = request.path.match(/^\/s\/([^/]+)\/g\/([^/]+)\/(.*)$/);
   if (!match) {
@@ -536,6 +549,7 @@ export const deleteGame = onCall({ region: "asia-northeast3", enforceAppCheck: t
   await deleteDocs(await db.collection("likeRecords").where("targetType", "==", "game").where("targetId", "==", gameId).get());
   await gameRef.delete();
   await allowlistRef(gameId).delete();
+  await db.doc(`gameStats/${gameId}`).delete();
   logger.info("Deleted game", { gameId });
   return { ok: true };
 });
