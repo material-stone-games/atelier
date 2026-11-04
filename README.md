@@ -86,6 +86,8 @@ Firebase Web config는 브라우저에 노출되는 값이므로 비밀값으로
 
 관리자가 업로드하는 ZIP은 루트(또는 하나의 최상위 폴더)에 `index.html`이 있어야 하며 웹빌드의 asset 경로는 상대 경로여야 합니다. Unity WebGL의 `.gz`/`.br` asset은 gateway가 `Content-Encoding`을 붙여 전달합니다. 기존 게임에 새 빌드를 올리면 처리 완료까지 이전 빌드가 계속 공개되고, 성공 시 이전 빌드 파일은 삭제됩니다. 경로 순회, 절대 경로, 심볼릭 링크, 250MiB 초과 ZIP, 압축 해제 후 1GiB 초과 빌드는 거부됩니다.
 
+전체화면에는 플레이어 UI가 없으므로 웹빌드는 게임 메뉴에 나가기 버튼을 넣어야 합니다. 나가기 신호와 실행 환경 구분은 [게임 연동 가이드](docs/game-integration.md)를 참고합니다.
+
 ## Cost guardrails
 
 Blaze는 종량제이므로 Google Cloud Billing 예산 알림, Functions `maxInstances`, App Check, 파일 크기 제한을 함께 설정합니다. 예산 알림은 자동 지출 차단이 아니므로 초기에는 낮은 max instance와 보수적인 업로드 제한으로 운영합니다.

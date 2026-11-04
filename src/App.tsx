@@ -401,11 +401,54 @@ function PlayScreen({ message, locked }: { message: string; locked: boolean }) {
   return <div className="play-screen" role="status">{locked ? <span className="play-screen-kicker">LOCKED</span> : null}<p>{message}</p></div>;
 }
 
+// Keyboard Lock exists only in some browsers and must be called from this top-level page, not from the build's iframe.
+function keyboardLock() {
+  return (navigator as Navigator & { keyboard?: { lock(keys: string[]): Promise<void>; unlock(): void } }).keyboard;
+}
+
+function lockEscape() {
+  void keyboardLock()?.lock(["Escape"]).catch(() => undefined);
+}
+
 function PlaySurface({ playUrl, playerRef }: { playUrl: string | null; playerRef: React.RefObject<HTMLDivElement | null> }) {
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
   // iPhone Safari has no element fullscreen, so the player falls back to covering the viewport.
   const [pseudoFullscreen, setPseudoFullscreen] = useState(false);
   const fullscreen = nativeFullscreen || pseudoFullscreen;
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const capturesEscape = useRef(false);
+  // Uploaded builds run on the functions origin and demos on this one, so the target stays "*"; the payload is only a boolean.
+  function announceFullscreen() {
+    frameRef.current?.contentWindow?.postMessage({ type: "atelier:fullscreen-change", fullscreen }, "*");
+  }
+  useEffect(() => {
+    // The toolbar button that held focus unmounts in fullscreen; keyboard games need the keys to reach the build.
+    if (fullscreen) frameRef.current?.focus();
+    else keyboardLock()?.unlock();
+    announceFullscreen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullscreen]);
+  useEffect(() => () => keyboardLock()?.unlock(), []);
+  useEffect(() => {
+    // A build can only leave fullscreen this way, never enter it, so the worst a hostile build can do is close its own view.
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== frameRef.current?.contentWindow) return;
+      // Engines that boot after the iframe's load event ask for the state they missed.
+      if (event.data?.type === "atelier:get-fullscreen") announceFullscreen();
+      // Opt-in: a build that ignores Esc would otherwise leave players with a key that seems dead.
+      if (event.data?.type === "atelier:capture-esc") {
+        capturesEscape.current = true;
+        if (nativeFullscreen) lockEscape();
+      }
+      if (event.data?.type === "atelier:exit-fullscreen") {
+        if (pseudoFullscreen) setPseudoFullscreen(false);
+        else if (nativeFullscreen) void exitFullscreen();
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nativeFullscreen, pseudoFullscreen]);
   useEffect(() => {
     const sync = () => setNativeFullscreen(fullscreenElement() === playerRef.current);
     document.addEventListener("fullscreenchange", sync);
@@ -419,11 +462,10 @@ function PlaySurface({ playUrl, playerRef }: { playUrl: string | null; playerRef
     window.addEventListener("keydown", onKey);
     return () => { document.documentElement.classList.remove("player-locked"); window.removeEventListener("keydown", onKey); };
   }, [pseudoFullscreen]);
-  async function toggleFullscreen() {
-    if (pseudoFullscreen) { setPseudoFullscreen(false); return; }
-    if (fullscreenElement()) { await exitFullscreen(); return; }
+  async function enterFullscreen() {
     const player = playerRef.current as FullscreenTarget | null;
     if (!player) return;
+    if (capturesEscape.current) lockEscape();
     // iPhone Safari can expose the methods while reporting fullscreen as unavailable.
     if (!fullscreenEnabled()) { setPseudoFullscreen(true); return; }
     try {
@@ -437,7 +479,7 @@ function PlaySurface({ playUrl, playerRef }: { playUrl: string | null; playerRef
     // Older WebKit returns nothing and fails silently, so check that fullscreen really started.
     window.setTimeout(() => { if (!fullscreenElement()) setPseudoFullscreen(true); }, 500);
   }
-  return <div className={`play-surface${pseudoFullscreen ? " is-pseudo-fullscreen" : ""}`} ref={playerRef}><div className="play-surface-top"><span>ATELIER PLAYER / LIVE BUILD</span><button className="fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreen ? "전체화면 종료" : "전체화면"} title={fullscreen ? "전체화면 종료" : "전체화면"}><FullscreenIcon exit={fullscreen} /></button></div>{playUrl ? <iframe title="Atelier game build" src={playUrl} allow="fullscreen; gamepad; pointer-lock; autoplay" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock" /> : <div className="demo-frame"><span className="live-dot" /><strong>Build gateway connected</strong><p>Firebase 환경변수를 연결하면 업로드된 게임이 이 프레임에서 실행됩니다.</p></div>}</div>;
+  return <div className={`play-surface${pseudoFullscreen ? " is-pseudo-fullscreen" : ""}`} ref={playerRef}>{fullscreen ? null : <div className="play-surface-top"><span>ATELIER PLAYER / LIVE BUILD</span><button className="fullscreen-toggle" type="button" onClick={enterFullscreen} aria-label="전체화면" title="전체화면"><FullscreenIcon /></button></div>}{playUrl ? <iframe ref={frameRef} title="Atelier game build" src={playUrl} onLoad={announceFullscreen} allow="fullscreen; gamepad; pointer-lock; autoplay" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock" /> : <div className="demo-frame"><span className="live-dot" /><strong>Build gateway connected</strong><p>Firebase 환경변수를 연결하면 업로드된 게임이 이 프레임에서 실행됩니다.</p></div>}</div>;
 }
 
 // Safari before 16.4 (and iPadOS) only exposes the webkit-prefixed fullscreen API.
@@ -447,9 +489,8 @@ function fullscreenEnabled() { const doc = document as FullscreenDocument; retur
 function fullscreenElement() { const doc = document as FullscreenDocument; return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null; }
 async function exitFullscreen() { const doc = document as FullscreenDocument; if (doc.exitFullscreen) await doc.exitFullscreen(); else await doc.webkitExitFullscreen?.(); }
 
-function FullscreenIcon({ exit }: { exit: boolean }) {
-  const corners = exit ? "M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" : "M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4";
-  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d={corners} /></svg>;
+function FullscreenIcon() {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" /></svg>;
 }
 
 function CommentThread({ targetType, targetId, auth, onNotify }: { targetType: TargetType; targetId: string; auth: AuthState; onNotify: (message: string) => void }) {

@@ -122,10 +122,10 @@ h1 em, .hero h1 em, .page-heading h1 em, .game-detail-copy h1 em { color: var(--
 .fullscreen-toggle { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; margin-right: -8px; }
 .play-surface-top button:hover { color: var(--accent-strong); }
 .play-surface iframe { display: block; width: 100%; min-height: min(72vh, 800px); border: 0; background: #000; }
-/* In fullscreen the player fills the screen: the toolbar keeps its height and the build takes the rest. */
-.play-surface:fullscreen { display: flex; flex-direction: column; }
+/* In fullscreen the toolbar is gone and the build takes the whole screen; players leave through the build's own menu. */
+.play-surface:fullscreen { display: flex; flex-direction: column; border: 0; }
 .play-surface:fullscreen iframe, .play-surface:fullscreen .demo-frame { flex: 1; min-height: 0; height: auto; }
-.play-surface:-webkit-full-screen { display: flex; flex-direction: column; width: 100%; height: 100%; }
+.play-surface:-webkit-full-screen { display: flex; flex-direction: column; width: 100%; height: 100%; border: 0; }
 .play-surface:-webkit-full-screen iframe, .play-surface:-webkit-full-screen .demo-frame { flex: 1; min-height: 0; height: auto; }
 /* Fallback where element fullscreen is missing (iPhone Safari): the player covers the viewport and the page stops scrolling. */
 .play-surface.is-pseudo-fullscreen { position: fixed; inset: 0; z-index: 100; margin: 0; border: 0; display: flex; flex-direction: column; height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
