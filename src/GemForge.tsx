@@ -462,7 +462,9 @@ export default function GemForge() {
     let onScreen = true;
     const loop = (now: number) => {
       frame = requestAnimationFrame(loop);
-      const dt = Math.min(.05, (now - last) / 1000);
+      // A frame's timestamp is when the frame began, so it can predate a `last` taken from
+      // performance.now() during slow setup. Without the floor, time would run backwards past zero.
+      const dt = Math.max(0, Math.min(.05, (now - last) / 1000));
       last = now;
       if (!onScreen || document.hidden) return;
       update(dt);
