@@ -46,7 +46,7 @@ h1 em, .hero h1 em, .page-heading h1 em, .game-detail-copy h1 em { color: var(--
 .button-quiet:hover { border-color: var(--color-text); }
 .button-like { border-color: var(--color-line); background: transparent; color: var(--color-text); }
 .button-like:hover, .button-like.active { color: var(--heat); border-color: var(--heat); }
-.view-count { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--fs-caption); text-transform: uppercase; letter-spacing: .07em; white-space: nowrap; }
+.view-count { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--fs-caption); letter-spacing: .07em; white-space: nowrap; }
 .button.small { min-height: 36px; padding: 0 14px; }
 .live-dot { width: 7px; height: 7px; display: inline-block; border-radius: 50%; background: var(--success); box-shadow: 0 0 12px var(--success); }
 .hero-art { min-height: 480px; position: relative; }
