@@ -1,5 +1,12 @@
 {
   "projects": {
     "default": "material-stone-atelier"
+  },
+  "targets": {
+    "material-stone-atelier": {
+      "storage": {
+        "main": ["material-stone-atelier.firebasestorage.app", "material-stone-atelier-us"]
+      }
+    }
   }
 }

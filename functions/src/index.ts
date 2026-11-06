@@ -11,12 +11,15 @@ import { logger } from "firebase-functions";
 import mime from "mime-types";
 import unzipper from "unzipper";
 import { type AccessLevel, isAccessLevel, normalizeEmailList, weeklyRotationIds } from "./access.js";
+import { DIRECT_ASSET_CACHE_CONTROL, isDirectAsset, signedUrlWindow } from "./delivery.js";
 import { monthKeyBefore, pageMonthKey } from "./month.js";
 
 if (!getApps().length) initializeApp();
 
 const db = getFirestore();
-const bucket = getStorage().bucket();
+// Game files live in a US bucket (GAME_STORAGE_BUCKET): Cloud Storage's no-cost quota excludes Seoul.
+const GAME_STORAGE_BUCKET = defineString("GAME_STORAGE_BUCKET");
+const bucket = getStorage().bucket(process.env.GAME_STORAGE_BUCKET);
 const YOUTUBE_CHANNEL_ID = defineString("YOUTUBE_CHANNEL_ID", { default: "" });
 const PAGES_ORIGIN = defineString("PAGES_ORIGIN", { default: "https://material-stone-games.github.io" });
 const FUNCTIONS_BASE_URL = defineString("FUNCTIONS_BASE_URL", { default: "" });
@@ -418,6 +421,11 @@ export const playGateway = onRequest({ region: "asia-northeast3", maxInstances: 
     return;
   }
   const file = bucket.file(`game-builds/${gameId}/${token.versionId}/${relativePath}`);
+  if (isDirectAsset(relativePath)) {
+    response.set("Cache-Control", "no-store");
+    response.redirect(302, await directAssetUrl(file));
+    return;
+  }
   const [exists] = await file.exists();
   if (!exists) {
     response.status(404).send("Asset not found");
@@ -432,6 +440,23 @@ export const playGateway = onRequest({ region: "asia-northeast3", maxInstances: 
   response.set("X-Content-Type-Options", "nosniff");
   file.createReadStream().on("error", () => response.end()).pipe(response);
 });
+
+// Signing is a remote IAM call, and a URL stays the same for its whole window.
+const signedUrls = new Map<string, string>();
+let signedUrlsWindowStart = 0;
+
+async function directAssetUrl(file: ReturnType<typeof bucket.file>): Promise<string> {
+  const { accessibleAt, expires } = signedUrlWindow(Date.now());
+  if (accessibleAt.getTime() !== signedUrlsWindowStart) {
+    signedUrls.clear();
+    signedUrlsWindowStart = accessibleAt.getTime();
+  }
+  const cached = signedUrls.get(file.name);
+  if (cached) return cached;
+  const [url] = await file.getSignedUrl({ version: "v4", action: "read", accessibleAt, expires });
+  signedUrls.set(file.name, url);
+  return url;
+}
 
 function assetHeaders(path: string): { contentType: string; contentEncoding?: "gzip" | "br" } {
   const contentEncoding = path.endsWith(".gz") ? "gzip" : path.endsWith(".br") ? "br" : undefined;
@@ -462,7 +487,8 @@ async function deletePrefix(prefix: string, keep?: (name: string) => boolean): P
   return targets.length;
 }
 
-export const processBuildZip = onObjectFinalized({ region: "asia-northeast3", memory: "2GiB", timeoutSeconds: 540 }, async (event) => {
+// A Storage trigger has to run in its bucket's region.
+export const processBuildZip = onObjectFinalized({ bucket: GAME_STORAGE_BUCKET, region: "us-central1", memory: "2GiB", timeoutSeconds: 540 }, async (event) => {
   const object = event.data;
   const objectName = object.name ?? "";
   const match = objectName.match(/^incoming-builds\/([^/]+)\/([^/]+)\/([^/]+)\.zip$/);
@@ -493,7 +519,9 @@ export const processBuildZip = onObjectFinalized({ region: "asia-northeast3", me
       const content = await entry.buffer();
       extractedBytes += content.byteLength;
       if (extractedBytes > MAX_EXTRACTED_BYTES) throw new Error("압축 해제 결과가 너무 큽니다.");
-      await bucket.file(`${versionRoot}${path}`).save(content, { resumable: false, metadata: { contentType: assetHeaders(path).contentType } });
+      // Cloud Storage serves direct assets itself, so the object must carry the headers the gateway would set.
+      const { contentType, contentEncoding } = assetHeaders(path);
+      await bucket.file(`${versionRoot}${path}`).save(content, { resumable: false, metadata: { contentType, contentEncoding, cacheControl: DIRECT_ASSET_CACHE_CONTROL } });
     }
     await gameRef.update({ buildVersionId: versionId, buildStatus: "published", buildRoot: versionRoot.slice(0, -1), pendingVersionId: FieldValue.delete(), buildError: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() });
     const removed = await deletePrefix(`game-builds/${gameId}/`, (name) => name.startsWith(versionRoot));
